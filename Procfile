@@ -1,0 +1,1 @@
+web: npm run prisma:deploy && node dist/main.js
