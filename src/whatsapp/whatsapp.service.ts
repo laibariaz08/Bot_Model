@@ -3,7 +3,8 @@ import axios from 'axios';
 
 @Injectable()
 export class WhatsappService {
-  private readonly baseURL = 'https://graph.instagram.com/v18.0';
+  // Use Meta Graph API for WhatsApp Cloud API (not Instagram Graph)
+  private readonly baseURL = 'https://graph.facebook.com/v18.0';
   private readonly phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   private readonly accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
