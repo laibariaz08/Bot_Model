@@ -42,19 +42,38 @@ export class ChatController {
         return { status: 'ok' };
       }
 
-      const { from, messageId, text, type } = incomingData;
+      const { from, messageId, text, type, phoneNumberId } = incomingData;
 
       console.log(`📱 Message from ${from}: ${text}`);
 
       // Mark message as read
       await this.whatsappService.markAsRead(messageId);
 
+      // Find business by the phone_number_id in webhook metadata
+      const business = await this.chatService.findBusinessByWhatsappId(
+        phoneNumberId,
+      );
+
+      if (!business) {
+        console.warn('⚠️ Business not found for phoneNumberId', phoneNumberId);
+        return { status: 'ok', message: 'No business found for this phone' };
+      }
+
+      // Find or create chat for this user and business
+      const chat = await this.chatService.findOrCreateChat(from, business.id);
+
+      // Persist incoming user message
+      await this.chatService.saveMessage(chat.id, 'user', text || '', messageId);
+
       // Get AI response
       const aiResponse = await this.aiService.getResponse(text);
 
-      // Send response back to user
+      // Send response back to user and save assistant message
       if (aiResponse) {
-        await this.whatsappService.sendMessage(from, aiResponse);
+        const sendResult = await this.whatsappService.sendMessage(from, aiResponse);
+        // try to extract whatsapp message id from provider response
+        const sentId = sendResult?.messages?.[0]?.id || sendResult?.id;
+        await this.chatService.saveMessage(chat.id, 'assistant', aiResponse, sentId);
         console.log(`✅ Reply sent to ${from}`);
       }
 

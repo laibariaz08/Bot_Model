@@ -42,6 +42,7 @@ export class WhatsappService {
   processIncomingMessage(webhookData: any) {
     try {
       const messages = webhookData.entry?.[0]?.changes?.[0]?.value?.messages;
+      const phoneNumberId = webhookData.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
 
       if (!messages) return null;
 
@@ -50,6 +51,7 @@ export class WhatsappService {
       return {
         from: incomingMessage.from,
         messageId: incomingMessage.id,
+        phoneNumberId,
         timestamp: incomingMessage.timestamp,
         type: incomingMessage.type, // 'text', 'image', etc.
         text: incomingMessage.text?.body,

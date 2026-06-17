@@ -12,6 +12,13 @@ export class ChatService {
     });
   }
 
+  // Find business by WhatsApp phone number id (metadata.phone_number_id)
+  async findBusinessByWhatsappId(phoneNumberId: string) {
+    return this.prisma.business.findFirst({
+      where: { whatsappPhoneNumberId: phoneNumberId },
+    });
+  }
+
   // 2. Find or create chat
   async findOrCreateChat(userPhone: string, businessId: number) {
     let chat = await this.prisma.chat.findFirst({
@@ -34,12 +41,18 @@ export class ChatService {
   }
 
   // 3. Save message
-  async saveMessage(chatId: number, sender: string, content: string) {
+  async saveMessage(
+    chatId: number,
+    sender: string,
+    content: string,
+    whatsappMessageId?: string,
+  ) {
     return this.prisma.message.create({
       data: {
         chatId,
         sender,
         content,
+        whatsappMessageId,
       },
     });
   }
