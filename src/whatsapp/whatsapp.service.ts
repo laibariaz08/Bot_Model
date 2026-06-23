@@ -31,9 +31,13 @@ export class WhatsappService {
       console.log('✅ Message sent successfully:', response.data);
       return response.data;
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error sending message:', errorMsg);
+      // Log axios response body when available for easier debugging
+      if (axios.isAxiosError(error)) {
+        console.error('❌ Error sending message:', error.response?.data || error.message);
+      } else {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('❌ Error sending message:', errorMsg);
+      }
       throw error;
     }
   }
@@ -68,7 +72,7 @@ export class WhatsappService {
   async markAsRead(messageId: string) {
     try {
       await axios.post(
-        `${this.baseURL}/${this.phoneNumberId}/mark_message_read`,
+        `${this.baseURL}/${this.phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
           status: 'read',
@@ -82,7 +86,11 @@ export class WhatsappService {
       );
       console.log('✅ Message marked as read');
     } catch (error) {
-      console.error('❌ Error marking message as read:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('❌ Error marking message as read:', error.response?.data || error.message);
+      } else {
+        console.error('❌ Error marking message as read:', error);
+      }
     }
   }
 }

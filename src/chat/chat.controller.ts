@@ -65,8 +65,11 @@ export class ChatController {
       // Persist incoming user message
       await this.chatService.saveMessage(chat.id, 'user', text || '', messageId);
 
-      // Get AI response
-      const aiResponse = await this.aiService.getResponse(text);
+      const history = await this.chatService.getChatHistory(chat.id);
+      const knowledge = await this.chatService.getKnowledge(business.id);
+
+      // Get AI response with chat history and business knowledge
+      const aiResponse = await this.aiService.getResponse(text, history, knowledge);
 
       // Send response back to user and save assistant message
       if (aiResponse) {
@@ -80,7 +83,7 @@ export class ChatController {
       return { status: 'ok', message: 'Processed' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('❌ Error handling webhook:', errorMessage);
+      console.error('❌ Error handling webhook:', errorMessage, error instanceof Error ? error.stack : '');
       return { status: 'error', message: errorMessage };
     }
   }

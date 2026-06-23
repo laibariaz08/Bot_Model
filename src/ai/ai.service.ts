@@ -7,15 +7,38 @@ export class AiService {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-   async getResponse(message: string) {
-   const completion = await this.openai.chat.completions.create({
-   model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a helpful business assistant' },
-        { role: 'user', content: message },
-      ],
+  async getResponse(message: string, history: any[] = [], knowledge: any[] = []) {
+    // Build system prompt with business instructions and knowledge base
+    const kbText = knowledge && knowledge.length
+      ? knowledge.map((k, i) => `KB${i + 1}: ${k.content}`).join('\n')
+      : '';
+
+    const systemMessages: any[] = [
+      { role: 'system', content: 'You are a helpful business assistant. Answer politely and concisely.' },
+    ];
+
+    if (kbText) {
+      systemMessages.push({ role: 'system', content: `Business knowledge:\n${kbText}` });
+    }
+
+    // Convert chat history (assumed newest-first) to chronological messages
+    const historyMessages = (history || [])
+      .slice()
+      .reverse()
+      .map(h => ({ role: h.sender === 'assistant' ? 'assistant' : 'user', content: h.content }));
+
+    const messages = [
+      ...systemMessages,
+      ...historyMessages,
+      { role: 'user', content: message },
+    ];
+
+    const completion = await this.openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
     });
-   return completion.choices[0].message.content;
+
+    return completion.choices[0].message.content;
   }
 }
 
