@@ -69,16 +69,8 @@ export class ChatController {
       ? knowledge.map((k, i) => `KB${i + 1}: ${k.content}`).join('\n')
       : '';
 
-    const systemMessages: any[] = [
-      { role: 'system', content: 'You are a helpful business assistant. Answer politely and concisely.' },
-    ];
-
-    if (kbText) {
-      systemMessages.push({ role: 'system', content: `Business knowledge:\n${kbText}` });
-    }
-
       // Persist incoming user message
-await this.chatService.saveMessage(chat.id, 'user', `${text} [KB:${systemMessages}]`, messageId);
+await this.chatService.saveMessage(chat.id, 'user', `${text} [KB:${kbText}]`, messageId);
 
       // Get AI response with chat history and business knowledge
       const aiResponse = await this.aiService.getResponse(text, history, knowledge);
