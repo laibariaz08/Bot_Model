@@ -59,13 +59,16 @@ model Message {
 
 
 model KnowledgeBase {
-  id          Int      @id @default(autoincrement())
-  businessId  Int
-  title       String
-  content     String
+  id        Int     @id @default(autoincrement())
+  businessId Int
+  category  String  @default("General") // e.g., "Product", "Policy", "Delivery", "FAQ"
+  title     String  // short name for the knowledge item
+  content   String  @db.Text // detailed info
+  createdAt DateTime @default(now())
 
   business    Business @relation(fields: [businessId], references: [id])
 }
+
 model ConversationState {
   id        Int      @id @default(autoincrement())
   userPhone String
