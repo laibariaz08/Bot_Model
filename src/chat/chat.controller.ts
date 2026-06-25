@@ -62,11 +62,13 @@ export class ChatController {
       // Find or create chat for this user and business
       const chat = await this.chatService.findOrCreateChat(from, business.id);
 
-      // Persist incoming user message
-      await this.chatService.saveMessage(chat.id, 'user', text || '', messageId);
-
       const history = await this.chatService.getChatHistory(chat.id);
       const knowledge = await this.chatService.getKnowledge(business.id);
+
+      // Persist incoming user message
+      await this.chatService.saveMessage(chat.id, 'user', text || '' || knowledge || '', messageId);
+
+
 
       // Get AI response with chat history and business knowledge
       const aiResponse = await this.aiService.getResponse(text, history, knowledge);
