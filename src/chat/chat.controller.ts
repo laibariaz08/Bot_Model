@@ -66,8 +66,7 @@ export class ChatController {
       const knowledge = await this.chatService.getKnowledge(business.id);
 
       // Persist incoming user message
-      await this.chatService.saveMessage(chat.id, 'user', text || phoneNumberId || '', messageId);
-
+await this.chatService.saveMessage(chat.id, 'user', `${text} [phoneNumberId:${phoneNumberId}]`, messageId);
 
 
       // Get AI response with chat history and business knowledge
