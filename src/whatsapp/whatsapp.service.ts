@@ -55,7 +55,7 @@ export class WhatsappService {
       return {
         from: incomingMessage.from,
         messageId: incomingMessage.id,
-        phoneNumberId,
+        phoneNumberId: phoneNumberId,
         timestamp: incomingMessage.timestamp,
         type: incomingMessage.type, // 'text', 'image', etc.
         text: incomingMessage.text?.body,
