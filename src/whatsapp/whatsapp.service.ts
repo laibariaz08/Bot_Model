@@ -57,7 +57,7 @@ export class WhatsappService {
         messageId: incomingMessage.id,
         phoneNumberId: phoneNumberId,
         timestamp: incomingMessage.timestamp,
-        type: incomingMessage.type, // 'text', 'image', etc.
+        type: incomingMessage.type,
         text: incomingMessage.text?.body,
       };
     } catch (error) {

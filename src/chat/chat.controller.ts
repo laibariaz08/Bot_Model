@@ -42,7 +42,7 @@ export class ChatController {
         return { status: 'ok' };
       }
 
-      const { from, messageId, text, type, phoneNumberId } = incomingData;
+      const { from, messageId, text, phoneNumberId, type } = incomingData;
 
       console.log(`📱 Message from ${from}: ${text}`);
 
@@ -66,7 +66,7 @@ export class ChatController {
       const knowledge = await this.chatService.getKnowledge(business.id);
 
       // Persist incoming user message
-      await this.chatService.saveMessage(chat.id, 'user', text || knowledge || '', messageId);
+      await this.chatService.saveMessage(chat.id, 'user', text || business.id || '', messageId);
 
 
 
