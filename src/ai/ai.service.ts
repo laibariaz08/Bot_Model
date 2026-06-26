@@ -10,7 +10,7 @@ export class AiService {
   async getResponse(message: string, history: any[] = [], knowledge: any[] = []) {
     // Build system prompt with business instructions and knowledge base
     const kbText = knowledge && knowledge.length
-      ? knowledge.map((k, i) => `KB${i + 1}: ${k.content}`).join('\n')
+      ? knowledge.map((k, i) => `KB${i + 1}: ${k.title}${k.content ? ` - ${k.content}` : ''}`).join('\n')
       : '';
 
     const systemMessages: any[] = [

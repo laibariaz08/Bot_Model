@@ -65,13 +65,6 @@ export class ChatController {
       const history = await this.chatService.getChatHistory(chat.id);
       const knowledge = await this.chatService.getKnowledge(business.id);
 
-      const kbText = knowledge && knowledge.length
-      ? knowledge.map((k, i) => `KB${i + 1}: ${k.content}`).join('\n')
-      : '';
-
-      // Persist incoming user message
-      await this.chatService.saveMessage(chat.id, 'businessid', `${business.id}`, messageId);
-      await this.chatService.saveMessage(chat.id, 'knowledge_length', `${knowledge.length}`, messageId);
       await this.chatService.saveMessage(chat.id, 'user', text, messageId);
 
       // Get AI response with chat history and business knowledge
