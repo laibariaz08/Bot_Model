@@ -8,92 +8,157 @@ datasource db {
 }
 
 model Business {
-  id                    Int       @id @default(autoincrement())
-  name                  String
-  phoneNumber           String    @unique
-  
-  // NEW: WhatsApp Configuration
+  id          String @id @default(cuid())
+  name        String
+  phoneNumber String @unique
+
+  // WhatsApp Configuration
   whatsappPhoneNumberId String?
-  whatsappBusinessPhone String?   @unique
-  whatsappAccessToken   String?   // Store encrypted in production
-  whatsappIsActive      Boolean   @default(false)
-  
-  createdAt             DateTime  @default(now())
+  whatsappBusinessPhone String? @unique
+  whatsappAccessToken   String? // Store encrypted in production
+  whatsappIsActive      Boolean @default(false)
 
-  users                 User[]
-  chats                 Chat[]
-  knowledgeBase         KnowledgeBase[]
+  createdAt DateTime @default(now())
+
+  users         User[]
+  chats         Chat[]
+  knowledgeBase KnowledgeBase[]
+  workflowSessions WorkflowSession[]
+
+  @@map("businesses")
 }
-
 model User {
-  id          Int      @id @default(autoincrement())
-  email       String   @unique
-  password    String
-  role        String
-  businessId  Int
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      Role     @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  business    Business @relation(fields: [businessId], references: [id])
+  contacts         Contact[]
+  whatsappAccounts WhatsAppAccount[]
+
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
+
+  @@map("users")
 }
 
 model Chat {
-  id           Int      @id @default(autoincrement())
+  id           String   @id @default(cuid())
   userPhone    String
-  businessId   Int
+  businessId   String
   createdAt    DateTime @default(now())
+  isResolved   Boolean  @default(false)
+  isRequesting Boolean  @default(false)
 
-  business     Business @relation(fields: [businessId], references: [id])
-  messages     Message[]
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages Message[]
+  workflowSession WorkflowSession?
+
+  @@map("chats")
 }
 
 model Message {
-  id                   Int      @id @default(autoincrement())
-  chatId               Int
-  sender               String   // "user" or "assistant"
-  content              String
-  whatsappMessageId    String?  // Track Meta message ID
-  createdAt            DateTime @default(now())
+  id                Int      @id @default(autoincrement())
+  chatId            String
+  sender            String // "user" or "bot"
+  content           String
+  whatsappMessageId String? // Track Meta message ID
+  createdAt         DateTime @default(now())
 
-  chat                 Chat     @relation(fields: [chatId], references: [id])
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model WorkflowSession {
+  id String @id @default(cuid())
+
+  // User/Chat Context
+  chatId     String @unique
+  businessId String
+
+  // Workflow
+  workflowName String @default("default")
+  currentState String @default("START")
+  previousState String?
+
+  // Navigation Context
+  currentMenu String?
+
+  // Selected Items
+  selectedCategoryId    String?
+  selectedSubCategoryId String?
+  selectedBrandId       String?
+  selectedProductId     String?
+
+  // Generic workflow data
+  context Json?
+
+  // Status
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([currentState])
+  @@map("workflow_sessions")
 }
 
 
 model KnowledgeBase {
-  id        Int     @id @default(autoincrement())
-  businessId Int
-  category  String  @default("General") // e.g., "Product", "Policy", "Delivery", "FAQ"
-  title     String  // short name for the knowledge item
-  content   String  @db.Text // detailed info
+  id         String   @id @default(cuid())
+  businessId String
+  title      String
+  content    String
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_base")
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  email     String?
+  tags      String[] @default([])
+  status    String   @default("active")
+  messages  Int      @default(0)
   createdAt DateTime @default(now())
-
-  business    Business @relation(fields: [businessId], references: [id])
-}
-
-model ConversationState {
-  id        Int      @id @default(autoincrement())
-  userPhone String
-  businessId Int
-  step      String
-  data      Json
   updatedAt DateTime @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("contacts")
 }
-model Category {
-  id          Int       @id @default(autoincrement())
-  name        String
-  businessId  Int
-  products    Product[]
+
+model WhatsAppAccount {
+  id            String   @id @default(cuid())
+  phoneNumberId String
+  wabaId        String
+  accessToken   String
+  businessName  String?
+  status        String   @default("CONNECTED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_accounts")
 }
-model Product {
-  id          Int      @id @default(autoincrement())
-  name        String
-  price       Float
-  stock       Int
-  categoryId  Int
-  businessId  Int
-  category    Category @relation(fields: [categoryId], references: [id])
+
+enum Role {
+  OWNER
+  MEMBER
 }
-model ProductOption {
-  id        Int       @id @default(autoincrement())
-  name      String // Small, Medium, Large
-  productId Int
-}
+
