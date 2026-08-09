@@ -23,8 +23,6 @@ model Business {
   users         User[]
   chats         Chat[]
   knowledgeBase KnowledgeBase[]
-  workflowSessions WorkflowSession[]
-
   @@map("businesses")
 }
 model User {
@@ -55,8 +53,6 @@ model Chat {
 
   business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   messages Message[]
-  workflowSession WorkflowSession?
-
   @@map("chats")
 }
 
@@ -71,44 +67,6 @@ model Message {
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@map("messages")
-}
-
-model WorkflowSession {
-  id String @id @default(cuid())
-
-  // User/Chat Context
-  chatId     String @unique
-  businessId String
-
-  // Workflow
-  workflowName String @default("default")
-  currentState String @default("START")
-  previousState String?
-
-  // Navigation Context
-  currentMenu String?
-
-  // Selected Items
-  selectedCategoryId    String?
-  selectedSubCategoryId String?
-  selectedBrandId       String?
-  selectedProductId     String?
-
-  // Generic workflow data
-  context Json?
-
-  // Status
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  chat     Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  @@index([businessId])
-  @@index([currentState])
-  @@map("workflow_sessions")
 }
 
 
