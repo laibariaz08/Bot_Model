@@ -20,9 +20,12 @@ model Business {
 
   createdAt DateTime @default(now())
 
-  users         User[]
-  chats         Chat[]
-  knowledgeBase KnowledgeBase[]
+  users            User[]
+  chats            Chat[]
+  knowledgeBase    KnowledgeBase[]
+  workflows        Workflow[]
+  workflowSessions WorkflowSession[]
+
   @@map("businesses")
 }
 model User {
@@ -36,6 +39,7 @@ model User {
 
   contacts         Contact[]
   whatsappAccounts WhatsAppAccount[]
+  createdWorkflows Workflow[]
 
   businessId String?
   business   Business? @relation(fields: [businessId], references: [id])
@@ -51,17 +55,21 @@ model Chat {
   isResolved   Boolean  @default(false)
   isRequesting Boolean  @default(false)
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  messages Message[]
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages         Message[]
+  workflowSessions WorkflowSession[]
+
   @@map("chats")
 }
 
 model Message {
   id                Int      @id @default(autoincrement())
   chatId            String
-  sender            String // "user" or "bot"
+  sender            String   // "user" or "bot" or "assistant"
   content           String
-  whatsappMessageId String? // Track Meta message ID
+  messageType       String   @default("text") // "text", "interactive_button", "interactive_list", "image", "document"
+  metadata          Json?    // Structured payload for interactive messages (button configs, list configs, etc.)
+  whatsappMessageId String?  // Track Meta message ID
   createdAt         DateTime @default(now())
 
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -118,5 +126,140 @@ model WhatsAppAccount {
 enum Role {
   OWNER
   MEMBER
+}
+
+// ============================================================
+// WORKFLOW SYSTEM
+// ============================================================
+
+model Workflow {
+  id          String              @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  status      WorkflowStatus      @default(DRAFT)
+
+  // Trigger configuration
+  triggerType   WorkflowTriggerType
+  triggerConfig Json?
+
+  // Variable definitions declared by this workflow
+  variables Json?
+
+  // The workflow graph
+  nodes Json
+  edges Json
+
+  // Versioning
+  version     Int       @default(1)
+  publishedAt DateTime?
+
+  // Channel targeting
+  channel String @default("whatsapp")
+
+  // Template system
+  isTemplate       Boolean @default(false)
+  templateCategory String?
+
+  // Audit
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  creator  User?             @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  sessions WorkflowSession[]
+
+  @@index([businessId, status])
+  @@index([isTemplate, templateCategory])
+  @@map("workflows")
+}
+
+model WorkflowSession {
+  id              String        @id @default(cuid())
+  chatId          String
+  businessId      String
+  workflowId      String
+  workflowVersion Int
+
+  // Snapshot of the published workflow at session start
+  workflowSnapshot Json
+
+  // Current execution state
+  currentNodeId String?
+  status        SessionStatus   @default(ACTIVE)
+
+  // Runtime variable store
+  variables Json @default("{}")
+
+  // Execution context
+  context Json @default("{}")
+
+  // Visited node trail
+  history Json @default("[]")
+
+  // Input retry tracking
+  retryCount Int @default(0)
+  maxRetries Int @default(3)
+
+  // Activity tracking
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  completedAt    DateTime?
+
+  // Relations
+  chat     Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  workflow Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  logs     WorkflowLog[]
+
+  @@index([chatId, status])
+  @@index([businessId])
+  @@index([workflowId])
+  @@index([status, lastActivityAt])
+  @@map("workflow_sessions")
+}
+
+model WorkflowLog {
+  id        String   @id @default(cuid())
+  sessionId String
+  nodeId    String
+  nodeType  String
+  input     Json?
+  output    Json?
+  status    String   // "SUCCESS", "ERROR", "SKIPPED"
+  error     String?
+  duration  Int?     // ms
+  createdAt DateTime @default(now())
+
+  session WorkflowSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("workflow_logs")
+}
+
+enum WorkflowStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorkflowTriggerType {
+  KEYWORD
+  NEW_CONVERSATION
+  BUTTON_CLICK
+  MANUAL
+  WEBHOOK
+  CONTACT_EVENT
+}
+
+enum SessionStatus {
+  ACTIVE
+  WAITING_INPUT
+  COMPLETED
+  FAILED
+  HANDED_OVER
 }
 
