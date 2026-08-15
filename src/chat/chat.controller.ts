@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 
 @Controller('chat')
 export class ChatController {
@@ -9,6 +10,7 @@ export class ChatController {
     private chatService: ChatService,
     private aiService: AiService,
     private whatsappService: WhatsappService,
+    private workflowEngine: WorkflowEngineService,
   ) {}
 
   // Webhook verification (GET request from Meta)
@@ -42,9 +44,9 @@ export class ChatController {
         return { status: 'ok' };
       }
 
-      const { from, messageId, text, phoneNumberId, type } = incomingData;
+      const { from, messageId, text, phoneNumberId, type, buttonId, listRowId } = incomingData;
 
-      console.log(`📱 Message from ${from}: ${text}`);
+      console.log(`📱 Message from ${from}: ${text || buttonId || listRowId}`);
 
       // Mark message as read
       await this.whatsappService.markAsRead(messageId);
@@ -62,24 +64,38 @@ export class ChatController {
       // Find or create chat for this user and business
       const chat = await this.chatService.findOrCreateChat(from, business.id);
 
+      // Save incoming message
+      await this.chatService.saveMessage(chat.id, 'user', text || buttonId || '[interactive]', messageId);
+
+      // ─── WORKFLOW ENGINE CHECK ─────────────────────────
+      // Try workflow first. If it handles the message, we're done.
+      const handledByWorkflow = await this.workflowEngine.processMessage(
+        chat.id,
+        business.id,
+        { from, text, type, buttonId, listRowId, messageId },
+      );
+
+      if (handledByWorkflow) {
+        console.log(`🔄 Message handled by workflow engine`);
+        return { status: 'ok', message: 'Handled by workflow' };
+      }
+
+      // ─── AI FALLBACK ───────────────────────────────────
+      // No active workflow and no trigger matched — fall through to AI
       const history = await this.chatService.getChatHistory(chat.id);
       const knowledge = await this.chatService.getKnowledge(business.id);
 
-      await this.chatService.saveMessage(chat.id, 'user', text, messageId);
-
-      // Get AI response with chat history and business knowledge
-      const aiResponse = await this.aiService.getResponse(text, history, knowledge);
+      const aiResponse = await this.aiService.getResponse(text || '', history, knowledge);
 
       // Send response back to user and save assistant message
       if (aiResponse) {
         const sendResult = await this.whatsappService.sendMessage(from, aiResponse);
-        // try to extract whatsapp message id from provider response
         const sentId = sendResult?.messages?.[0]?.id || sendResult?.id;
         await this.chatService.saveMessage(chat.id, 'assistant', aiResponse, sentId);
-        console.log(`✅ Reply sent to ${from}`);
+        console.log(`✅ AI reply sent to ${from}`);
       }
 
-      return { status: 'ok', message: 'Processed' };
+      return { status: 'ok', message: 'Processed by AI' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('❌ Error handling webhook:', errorMessage, error instanceof Error ? error.stack : '');

@@ -52,13 +52,34 @@ export class WhatsappService {
 
       const incomingMessage = messages[0];
 
+      // Extract text from different message types
+      let text = incomingMessage.text?.body;
+      let buttonId: string | undefined;
+      let listRowId: string | undefined;
+
+      if (incomingMessage.type === 'interactive') {
+        const interactive = incomingMessage.interactive;
+        if (interactive?.type === 'button_reply') {
+          buttonId = interactive.button_reply?.id;
+          text = interactive.button_reply?.title || buttonId;
+        } else if (interactive?.type === 'list_reply') {
+          listRowId = interactive.list_reply?.id;
+          text = interactive.list_reply?.title || listRowId;
+        }
+      }
+
       return {
         from: incomingMessage.from,
         messageId: incomingMessage.id,
         phoneNumberId: phoneNumberId,
         timestamp: incomingMessage.timestamp,
         type: incomingMessage.type,
-        text: incomingMessage.text?.body,
+        text,
+        // Interactive reply fields (undefined for plain text messages)
+        buttonId,
+        listRowId,
+        // The raw interactive payload for advanced use
+        interactiveType: incomingMessage.interactive?.type,
       };
     } catch (error) {
       const errorMsg =
