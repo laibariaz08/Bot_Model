@@ -20,7 +20,7 @@ export class ChatService {
   }
 
   // 2. Find or create chat
-  async findOrCreateChat(userPhone: string, businessId: number) {
+  async findOrCreateChat(userPhone: string, businessId: string) {
     let chat = await this.prisma.chat.findFirst({
       where: {
         userPhone,
@@ -42,7 +42,7 @@ export class ChatService {
 
   // 3. Save message
   async saveMessage(
-    chatId: number,
+    chatId: string,
     sender: string,
     content: string,
     whatsappMessageId?: string,
@@ -58,7 +58,7 @@ export class ChatService {
   }
 
   // 4. Get last messages (context for AI)
-  async getChatHistory(chatId: number) {
+  async getChatHistory(chatId: string) {
     return this.prisma.message.findMany({
       where: { chatId },
       orderBy: { createdAt: 'desc' },
@@ -67,7 +67,7 @@ export class ChatService {
   }
 
   // 5. Get business knowledge
-  async getKnowledge(businessId: number) {
+  async getKnowledge(businessId: string) {
     return this.prisma.knowledgeBase.findMany({
       where: { businessId },
     });
