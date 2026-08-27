@@ -1,48 +1,43 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+
+export interface WhatsAppCredentials {
+  phoneNumberId: string;
+  accessToken: string;
+}
 
 @Injectable()
 export class WhatsappService {
-  // Use Meta Graph API for WhatsApp Cloud API (not Instagram Graph)
+  private readonly logger = new Logger(WhatsappService.name);
   private readonly baseURL = 'https://graph.facebook.com/v18.0';
-  private readonly phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  private readonly accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
-  // Send a text message
-  async sendMessage(recipientPhone: string, message: string) {
+  async sendMessage(recipientPhone: string, message: string, credentials: WhatsAppCredentials) {
     try {
       const response = await axios.post(
-        `${this.baseURL}/${this.phoneNumberId}/messages`,
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
           to: recipientPhone,
           type: 'text',
-          text: {
-            body: message,
-          },
+          text: { body: message },
         },
         {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${credentials.accessToken}` },
         },
       );
-      console.log('✅ Message sent successfully:', response.data);
+      this.logger.log(`Message sent to ${recipientPhone}: ${response.data?.messages?.[0]?.id}`);
       return response.data;
     } catch (error) {
-      // Log axios response body when available for easier debugging
       if (axios.isAxiosError(error)) {
-        console.error('❌ Error sending message:', error.response?.data || error.message);
+        this.logger.error(`Error sending message: ${JSON.stringify(error.response?.data || error.message)}`);
       } else {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error('❌ Error sending message:', errorMsg);
+        this.logger.error(`Error sending message: ${error instanceof Error ? error.message : error}`);
       }
       throw error;
     }
   }
 
-  // Handle incoming webhook
   processIncomingMessage(webhookData: any) {
     try {
       const messages = webhookData.entry?.[0]?.changes?.[0]?.value?.messages;
@@ -52,7 +47,6 @@ export class WhatsappService {
 
       const incomingMessage = messages[0];
 
-      // Extract text from different message types
       let text = incomingMessage.text?.body;
       let buttonId: string | undefined;
       let listRowId: string | undefined;
@@ -71,46 +65,39 @@ export class WhatsappService {
       return {
         from: incomingMessage.from,
         messageId: incomingMessage.id,
-        phoneNumberId: phoneNumberId,
+        phoneNumberId,
         timestamp: incomingMessage.timestamp,
         type: incomingMessage.type,
         text,
-        // Interactive reply fields (undefined for plain text messages)
         buttonId,
         listRowId,
-        // The raw interactive payload for advanced use
         interactiveType: incomingMessage.interactive?.type,
       };
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error processing webhook:', errorMsg);
+      this.logger.error(`Error processing webhook: ${error instanceof Error ? error.message : error}`);
       return null;
     }
   }
 
-  // Mark message as read
-  async markAsRead(messageId: string) {
+  async markAsRead(messageId: string, credentials: WhatsAppCredentials) {
     try {
       await axios.post(
-        `${this.baseURL}/${this.phoneNumberId}/messages`,
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
           status: 'read',
           message_id: messageId,
         },
         {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${credentials.accessToken}` },
         },
       );
-      console.log('✅ Message marked as read');
+      this.logger.log(`Message ${messageId} marked as read`);
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('❌ Error marking message as read:', error.response?.data || error.message);
+        this.logger.error(`Error marking as read: ${error.response?.data || error.message}`);
       } else {
-        console.error('❌ Error marking message as read:', error);
+        this.logger.error(`Error marking as read: ${error}`);
       }
     }
   }

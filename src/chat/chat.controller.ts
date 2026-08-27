@@ -1,19 +1,22 @@
-import { Controller, Post, Get, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('chat')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private chatService: ChatService,
     private aiService: AiService,
     private whatsappService: WhatsappService,
     private workflowEngine: WorkflowEngineService,
+    private prisma: PrismaService,
   ) {}
 
-  // Webhook verification (GET request from Meta)
   @Get('webhook')
   verifyWebhook(
     @Query('hub.mode') mode: string,
@@ -21,54 +24,42 @@ export class ChatController {
     @Query('hub.verify_token') token: string,
   ) {
     const verifyToken = process.env.VERIFY_TOKEN;
-
     if (mode === 'subscribe' && token === verifyToken) {
-      console.log('✅ Webhook verified successfully');
+      this.logger.log('Webhook verified successfully');
       return challenge;
-    } else {
-      console.log('❌ Webhook verification failed');
-      return null;
     }
+    this.logger.warn('Webhook verification failed');
+    return null;
   }
 
-  // Receive incoming messages (POST request from Meta)
   @Post('webhook')
   async handleWebhook(@Body() body: any) {
-    console.log('📨 Webhook received:', JSON.stringify(body, null, 2));
+    this.logger.log('Webhook received');
 
     try {
-      // Extract incoming message
       const incomingData = this.whatsappService.processIncomingMessage(body);
-
-      if (!incomingData) {
-        return { status: 'ok' };
-      }
+      if (!incomingData) return { status: 'ok' };
 
       const { from, messageId, text, phoneNumberId, type, buttonId, listRowId } = incomingData;
+      this.logger.log(`Message from ${from}: ${text || buttonId || listRowId}`);
 
-      console.log(`📱 Message from ${from}: ${text || buttonId || listRowId}`);
-
-      // Mark message as read
-      await this.whatsappService.markAsRead(messageId);
-
-      // Find business by the phone_number_id in webhook metadata
-      const business = await this.chatService.findBusinessByWhatsappId(
-        phoneNumberId,
-      );
-
+      const business = await this.chatService.findBusinessByWhatsappId(phoneNumberId);
       if (!business) {
-        console.warn('⚠️ Business not found for phoneNumberId', phoneNumberId);
+        this.logger.warn(`Business not found for phoneNumberId ${phoneNumberId}`);
         return { status: 'ok', message: 'No business found for this phone' };
       }
 
-      // Find or create chat for this user and business
-      const chat = await this.chatService.findOrCreateChat(from, business.id);
+      const credentials = {
+        phoneNumberId: business.whatsappPhoneNumberId!,
+        accessToken: business.whatsappAccessToken!,
+      };
 
-      // Save incoming message
+      await this.whatsappService.markAsRead(messageId, credentials);
+
+      const chat = await this.chatService.findOrCreateChat(from, business.id);
       await this.chatService.saveMessage(chat.id, 'user', text || buttonId || '[interactive]', messageId);
 
-      // ─── WORKFLOW ENGINE CHECK ─────────────────────────
-      // Try workflow first. If it handles the message, we're done.
+      // Workflow engine check
       const handledByWorkflow = await this.workflowEngine.processMessage(
         chat.id,
         business.id,
@@ -76,118 +67,91 @@ export class ChatController {
       );
 
       if (handledByWorkflow) {
-        console.log(`🔄 Message handled by workflow engine`);
+        this.logger.log('Message handled by workflow engine');
         return { status: 'ok', message: 'Handled by workflow' };
       }
 
-      // ─── AI FALLBACK ───────────────────────────────────
-      // No active workflow and no trigger matched — fall through to AI
+      // AI fallback
       const history = await this.chatService.getChatHistory(chat.id);
       const knowledge = await this.chatService.getKnowledge(business.id);
-
       const aiResponse = await this.aiService.getResponse(text || '', history, knowledge);
 
-      // Send response back to user and save assistant message
       if (aiResponse) {
-        const sendResult = await this.whatsappService.sendMessage(from, aiResponse);
+        const sendResult = await this.whatsappService.sendMessage(from, aiResponse, credentials);
         const sentId = sendResult?.messages?.[0]?.id || sendResult?.id;
         await this.chatService.saveMessage(chat.id, 'assistant', aiResponse, sentId);
-        console.log(`✅ AI reply sent to ${from}`);
+        this.logger.log(`AI reply sent to ${from}`);
       }
 
       return { status: 'ok', message: 'Processed by AI' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('❌ Error handling webhook:', errorMessage, error instanceof Error ? error.stack : '');
+      this.logger.error(`Error handling webhook: ${errorMessage}`);
       return { status: 'error', message: errorMessage };
     }
   }
 
-  // Test endpoint - Send message directly
-  @Post('send-message')
-  async sendMessage(@Body() body: { to: string; message: string }) {
-    const result = await this.whatsappService.sendMessage(
-      body.to,
-      body.message,
+  // Agent reply — called by the web app backend when a business owner replies to a customer
+  @Post('agent-reply')
+  async agentReply(@Body() body: { chatId: string; content: string }) {
+    if (!body.chatId || !body.content) {
+      throw new BadRequestException('chatId and content are required');
+    }
+
+    const chat = await this.prisma.chat.findUnique({
+      where: { id: body.chatId },
+      include: {
+        business: {
+          select: {
+            whatsappPhoneNumberId: true,
+            whatsappAccessToken: true,
+            whatsappIsActive: true,
+          },
+        },
+      },
+    });
+
+    if (!chat) throw new NotFoundException('Chat not found');
+
+    if (!chat.business.whatsappIsActive || !chat.business.whatsappPhoneNumberId || !chat.business.whatsappAccessToken) {
+      throw new BadRequestException('WhatsApp is not configured or inactive for this business');
+    }
+
+    const credentials = {
+      phoneNumberId: chat.business.whatsappPhoneNumberId,
+      accessToken: chat.business.whatsappAccessToken,
+    };
+
+    const sendResult = await this.whatsappService.sendMessage(chat.userPhone, body.content, credentials);
+    const whatsappMessageId = sendResult?.messages?.[0]?.id;
+
+    const message = await this.chatService.saveMessage(
+      body.chatId,
+      'agent',
+      body.content,
+      whatsappMessageId,
     );
+
+    this.logger.log(`Agent reply sent to ${chat.userPhone} for chat ${body.chatId}`);
+    return { success: true, message, whatsappMessageId };
+  }
+
+  // Test endpoint
+  @Post('send-message')
+  async sendMessage(@Body() body: { to: string; message: string; businessId: string }) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: body.businessId },
+      select: { whatsappPhoneNumberId: true, whatsappAccessToken: true },
+    });
+
+    if (!business?.whatsappPhoneNumberId || !business?.whatsappAccessToken) {
+      throw new BadRequestException('Business WhatsApp credentials not found');
+    }
+
+    const result = await this.whatsappService.sendMessage(body.to, body.message, {
+      phoneNumberId: business.whatsappPhoneNumberId,
+      accessToken: business.whatsappAccessToken,
+    });
     return result;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import { Controller, Post, Body } from '@nestjs/common';
-// import { ChatService } from './chat.service';
-// import { AiService } from '../ai/ai.service';
-// import { OrderService } from '../order/order.service';
-// import { PrismaService } from '../prisma/prisma.service';
-// import { ConversationService } from '../conversation/conversation.service';
-
-
-// @Controller('chat')
-// export class ChatController {
-//   constructor(
-//     private chatService: ChatService,
-//     private aiService: AiService,
-//     private orderService: OrderService,
-//     private prisma: PrismaService,
-//     private convo: ConversationService
-//   ) {}
-
-// @Post('webhook')
-// async handleMessage(@Body() body: any) {
-//   const { message, userPhone, businessPhone } = body;
-
-//   const business = await this.prisma.business.findFirst({
-//     where: { phoneNumber: businessPhone },
-//   });
-//   if (!business) {
-//   throw new Error("Business not found");
-// }
-
-//   // 1. Check existing funnel
-//   const state = await this.convo.getState(userPhone, business.id);
-
-//   if (state) {
-//     return {
-//       reply: await this.orderService.handle(userPhone, business.id, message),
-//     };
-//   }
-
-//   // 2. Detect intent
-//   const aiResult = await this.aiService.detectIntent(message);
-
-//   // 3. Route
-//   if (aiResult.intent === 'order_food') {
-//     return {
-//       reply: await this.orderService.handle(userPhone, business.id, message),
-//     };
-//   }
-
-//   // 4. FAQ
-//   const knowledge = await this.prisma.knowledgeBase.findMany({
-//     where: { businessId: business.id },
-//   });
-
-//   const reply = await this.aiService.getResponse(message, knowledge);
-
-//   return { reply };
-// }
-
-
-
-// }
