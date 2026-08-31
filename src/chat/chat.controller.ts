@@ -4,6 +4,7 @@ import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizePhone } from '../common/normalize-phone';
 
 @Controller('chat')
 export class ChatController {
@@ -40,7 +41,8 @@ export class ChatController {
       const incomingData = this.whatsappService.processIncomingMessage(body);
       if (!incomingData) return { status: 'ok' };
 
-      const { from, messageId, text, phoneNumberId, type, buttonId, listRowId } = incomingData;
+      const { from: rawFrom, messageId, text, phoneNumberId, type, buttonId, listRowId } = incomingData;
+      const from = normalizePhone(rawFrom);
       this.logger.log(`Message from ${from}: ${text || buttonId || listRowId}`);
 
       const business = await this.chatService.findBusinessByWhatsappId(phoneNumberId);
