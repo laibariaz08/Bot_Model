@@ -19,21 +19,16 @@ export class ChatService {
     });
   }
 
-  // 2. Find or create chat
+  // 2. Find or create chat — reuse the latest non-resolved chat for this phone
   async findOrCreateChat(userPhone: string, businessId: string) {
     let chat = await this.prisma.chat.findFirst({
-      where: {
-        userPhone,
-        businessId,
-      },
+      where: { userPhone, businessId, isResolved: false },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!chat) {
       chat = await this.prisma.chat.create({
-        data: {
-          userPhone,
-          businessId,
-        },
+        data: { userPhone, businessId },
       });
     }
 

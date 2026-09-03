@@ -9,6 +9,7 @@ import { normalizePhone } from '../common/normalize-phone';
 @Controller('chat')
 export class ChatController {
   private readonly logger = new Logger(ChatController.name);
+  private readonly processingMessages = new Set<string>();
 
   constructor(
     private chatService: ChatService,
@@ -37,13 +38,33 @@ export class ChatController {
   async handleWebhook(@Body() body: any) {
     this.logger.log('Webhook received');
 
+    let trackedMessageId: string | undefined;
     try {
       const incomingData = this.whatsappService.processIncomingMessage(body);
       if (!incomingData) return { status: 'ok' };
 
       const { from: rawFrom, messageId, text, phoneNumberId, type, buttonId, listRowId } = incomingData;
+      trackedMessageId = messageId;
       const from = normalizePhone(rawFrom);
       this.logger.log(`Message from ${from}: ${text || buttonId || listRowId}`);
+
+      // Deduplicate: Meta may deliver the same webhook multiple times
+      if (messageId) {
+        if (this.processingMessages.has(messageId)) {
+          this.logger.log(`Concurrent duplicate ignored for messageId ${messageId}`);
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+        this.processingMessages.add(messageId);
+
+        const existing = await this.prisma.message.findFirst({
+          where: { whatsappMessageId: messageId },
+        });
+        if (existing) {
+          this.processingMessages.delete(messageId);
+          this.logger.log(`Duplicate webhook ignored for messageId ${messageId}`);
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+      }
 
       const business = await this.chatService.findBusinessByWhatsappId(phoneNumberId);
       if (!business) {
@@ -90,6 +111,10 @@ export class ChatController {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error handling webhook: ${errorMessage}`);
       return { status: 'error', message: errorMessage };
+    } finally {
+      if (trackedMessageId) {
+        this.processingMessages.delete(trackedMessageId);
+      }
     }
   }
 
