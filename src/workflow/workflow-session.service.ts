@@ -20,30 +20,60 @@ export class WorkflowSessionService {
   // ─── Find Active Session ───────────────────────────────
 
   /**
-   * Find a session for this chat that is still in progress.
-   * Returns the most recent ACTIVE or WAITING_INPUT session.
+   * Find a session for this chat that is still in progress and within the 24-hour window.
+   * If the last activity is older than 24 hours, the session is auto-completed
+   * so a new flow can start fresh.
    */
   async findActiveSession(chatId: string) {
-    return this.prisma.workflowSession.findFirst({
+    const session = await this.prisma.workflowSession.findFirst({
       where: {
         chatId,
         status: { in: ['ACTIVE', 'WAITING_INPUT'] },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (!session) return null;
+
+    const hoursSinceActivity = (Date.now() - new Date(session.lastActivityAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSinceActivity >= 24) {
+      await this.prisma.workflowSession.update({
+        where: { id: session.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      this.logger.log(`Session ${session.id} expired (24h window exceeded), allowing new flow`);
+      return null;
+    }
+
+    return session;
   }
 
   /**
    * Find a session that is handed over (agent is handling).
+   * Also respects the 24-hour window.
    */
   async findHandedOverSession(chatId: string) {
-    return this.prisma.workflowSession.findFirst({
+    const session = await this.prisma.workflowSession.findFirst({
       where: {
         chatId,
         status: 'HANDED_OVER',
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (!session) return null;
+
+    const hoursSinceActivity = (Date.now() - new Date(session.lastActivityAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSinceActivity >= 24) {
+      await this.prisma.workflowSession.update({
+        where: { id: session.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      this.logger.log(`Handed-over session ${session.id} expired (24h window exceeded)`);
+      return null;
+    }
+
+    return session;
   }
 
   // ─── Create Session ────────────────────────────────────

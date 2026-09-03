@@ -46,8 +46,8 @@ const MAX_EXECUTION_STEPS = 50;
  */
 /** Interval for expiring stale sessions (every 5 minutes) */
 const EXPIRY_INTERVAL_MS = 5 * 60 * 1000;
-/** Sessions waiting for input longer than this are auto-completed */
-const SESSION_EXPIRY_MINUTES = 60;
+/** Sessions waiting for input longer than this are auto-completed (24 hours) */
+const SESSION_EXPIRY_MINUTES = 24 * 60;
 
 @Injectable()
 export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
