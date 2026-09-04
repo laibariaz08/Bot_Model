@@ -7,21 +7,36 @@ export class AiService {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  async getResponse(message: string, history: any[] = [], knowledge: any[] = []) {
-    // Build system prompt with business instructions and knowledge base
+  async getResponse(
+    message: string,
+    history: any[] = [],
+    knowledge: any[] = [],
+    businessContext?: { agentName?: string | null; agentInstructions?: string | null; websiteUrl?: string | null },
+  ) {
+    const agentName = businessContext?.agentName || 'Business Assistant';
+    const customInstructions = businessContext?.agentInstructions || '';
+    const websiteUrl = businessContext?.websiteUrl || '';
+
+    let systemPrompt = `You are ${agentName}, a helpful business assistant. Answer politely and concisely.`;
+    if (customInstructions) {
+      systemPrompt += `\n\nBusiness-specific instructions:\n${customInstructions}`;
+    }
+    if (websiteUrl) {
+      systemPrompt += `\n\nBusiness website: ${websiteUrl}`;
+    }
+
     const kbText = knowledge && knowledge.length
-      ? knowledge.map((k, i) => `KB${i + 1}: ${k.title}${k.content ? ` - ${k.content}` : ''}`).join('\n')
+      ? knowledge.map((k, i) => `KB${i + 1}: ${k.title} - ${k.content}`).join('\n')
       : '';
 
     const systemMessages: any[] = [
-      { role: 'system', content: 'You are a helpful business assistant. Answer politely and concisely.' },
+      { role: 'system', content: systemPrompt },
     ];
 
     if (kbText) {
-      systemMessages.push({ role: 'system', content: `Business knowledge:\n${kbText}` });
+      systemMessages.push({ role: 'system', content: `Business knowledge base:\n${kbText}` });
     }
 
-    // Convert chat history (assumed newest-first) to chronological messages
     const historyMessages = (history || [])
       .slice()
       .reverse()

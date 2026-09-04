@@ -97,7 +97,11 @@ export class ChatController {
       // AI fallback
       const history = await this.chatService.getChatHistory(chat.id);
       const knowledge = await this.chatService.getKnowledge(business.id);
-      const aiResponse = await this.aiService.getResponse(text || '', history, knowledge);
+      const aiResponse = await this.aiService.getResponse(text || '', history, knowledge, {
+        agentName: business.agentName,
+        agentInstructions: business.agentInstructions,
+        websiteUrl: business.websiteUrl,
+      });
 
       if (aiResponse) {
         const sendResult = await this.whatsappService.sendMessage(from, aiResponse, credentials);

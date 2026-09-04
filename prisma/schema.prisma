@@ -18,6 +18,11 @@ model Business {
   whatsappAccessToken   String? // Store encrypted in production
   whatsappIsActive      Boolean @default(false)
 
+  // AI Agent Configuration
+  agentName         String?
+  agentInstructions String?
+  websiteUrl        String?
+
   createdAt DateTime @default(now())
 
   users            User[]

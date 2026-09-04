@@ -43,9 +43,14 @@ export class AiResponseHandler implements NodeHandler {
         take: historyDepth,
       });
 
-      // Get business knowledge
+      // Get business knowledge and agent config
       const knowledge = await this.prisma.knowledgeBase.findMany({
         where: { businessId: ctx.session.businessId },
+      });
+
+      const business = await this.prisma.business.findUnique({
+        where: { id: ctx.session.businessId },
+        select: { agentName: true, agentInstructions: true, websiteUrl: true },
       });
 
       // Build enriched message with workflow context
@@ -78,6 +83,7 @@ export class AiResponseHandler implements NodeHandler {
         userMessage,
         history,
         knowledge,
+        business ? { agentName: business.agentName, agentInstructions: business.agentInstructions, websiteUrl: business.websiteUrl } : undefined,
       );
 
       if (!aiResponse) {

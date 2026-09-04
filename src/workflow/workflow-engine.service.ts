@@ -590,22 +590,30 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       const history = await this.prisma.message.findMany({
         where: { chatId: session.chatId },
         orderBy: { createdAt: 'desc' },
-        take: 5,
+        take: 10,
       });
 
       const knowledge = await this.prisma.knowledgeBase.findMany({
         where: { businessId: session.businessId },
       });
 
-      const workflowContext = `The customer is currently in a workflow at step "${currentNode.label}" (type: ${currentNode.type}). ` +
-        `Their response "${input.text}" doesn't match the expected options. ` +
-        `Respond helpfully and try to guide them back to the expected input. ` +
-        `Do NOT proceed with the workflow — just help them understand what's expected.`;
+      const business = await this.prisma.business.findUnique({
+        where: { id: session.businessId },
+        select: { agentName: true, agentInstructions: true, websiteUrl: true },
+      });
+
+      const workflowContext =
+        `The customer is currently in a conversation flow at step "${currentNode.label}". ` +
+        `They sent "${input.text}" which doesn't match the expected options for this step. ` +
+        `Answer their question or message naturally and helpfully using the conversation history and knowledge base. ` +
+        `After answering, gently remind them about the options available in the current step if relevant. ` +
+        `Be conversational and helpful — do NOT refuse to answer or tell them to "complete the flow first".`;
 
       const aiResponse = await this.aiService.getResponse(
         `[Workflow context: ${workflowContext}]\n\nCustomer message: ${input.text}`,
         history,
         knowledge,
+        business ? { agentName: business.agentName, agentInstructions: business.agentInstructions, websiteUrl: business.websiteUrl } : undefined,
       );
 
       if (aiResponse) {
