@@ -62,12 +62,12 @@ export class SendButtonsHandler implements NodeHandler {
 
       // No match — use fallback edge if it exists
       const hasFallbackEdge = ctx.edges.some(
-        (e) => e.sourceNodeId === node.id && e.sourceHandle === 'fallback',
+        (e) => e.sourceNodeId === node.id && (e.sourceHandle === '__fallback' || e.sourceHandle === 'fallback'),
       );
       if (hasFallbackEdge) {
         return {
           status: 'CONTINUE',
-          outputHandle: 'fallback',
+          outputHandle: '__fallback',
           output: { unmatched: true, text: input.text },
         };
       }

@@ -407,6 +407,11 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
 
     // Handle AI fallback — node returned WAIT with needsAiFallback
     if (result.status === 'WAIT' && result.output?.needsAiFallback) {
+      // Before falling back to AI, check if the input matches a button/row
+      // on another interactive node in the flow (user clicked a previous message's option)
+      const rerouted = await this.tryRerouteToFlowNode(session, currentNode, input, ctx);
+      if (rerouted) return true;
+
       await this.aiFallback(session, currentNode, input, ctx);
       // Increment retry
       await this.sessionService.incrementRetry(session.id);
@@ -569,6 +574,84 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     // Safety: hit max steps
     this.logger.warn(`Session ${sessionId} hit max execution steps (${MAX_EXECUTION_STEPS})`);
     await this.sessionService.failSession(sessionId, 'Max execution steps exceeded (possible infinite loop)');
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  RE-ROUTE TO FLOW NODE
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * When the current node can't match the user's input, check if it matches
+   * a button or list row on another interactive node in the flow.
+   * This handles the case where users click buttons/rows from previous messages.
+   * If a match is found, re-route the session to follow that node's edge.
+   */
+  private async tryRerouteToFlowNode(
+    session: any,
+    currentNode: WorkflowNode,
+    input: IncomingMessage,
+    ctx: ExecutionContext,
+  ): Promise<boolean> {
+    const clickedId = input.buttonId || input.listRowId;
+    const text = input.text;
+
+    for (const node of ctx.nodes) {
+      if (node.id === currentNode.id) continue;
+      const config = node.config || {};
+
+      if (node.type === 'send_buttons') {
+        const buttons: Array<{ id: string; title: string }> = config.buttons || [];
+        let matched: { id: string; title: string } | undefined;
+
+        if (clickedId) {
+          matched = buttons.find((b) => b.id === clickedId);
+        }
+        if (!matched && text) {
+          matched = buttons.find((b) => b.title.toLowerCase() === text.toLowerCase());
+        }
+
+        if (matched) {
+          const nextNodeId = this.findNextNode(ctx.edges, node.id, matched.id);
+          if (nextNodeId) {
+            this.logger.log(
+              `Re-routing session ${session.id}: input matched button "${matched.title}" on node ${node.id}, jumping to ${nextNodeId}`,
+            );
+            await this.sessionService.advanceToNode(session.id, nextNodeId, 'ACTIVE');
+            await this.sessionService.resetRetry(session.id);
+            await this.executeFromNode(session.id, nextNodeId, ctx);
+            return true;
+          }
+        }
+      }
+
+      if (node.type === 'send_list') {
+        const sections: Array<{ rows: Array<{ id: string; title: string }> }> = config.sections || [];
+        const allRows = sections.flatMap((s) => s.rows || []);
+        let matched: { id: string; title: string } | undefined;
+
+        if (clickedId) {
+          matched = allRows.find((r) => r.id === clickedId);
+        }
+        if (!matched && text) {
+          matched = allRows.find((r) => r.title.toLowerCase() === text.toLowerCase());
+        }
+
+        if (matched) {
+          const nextNodeId = this.findNextNode(ctx.edges, node.id, matched.id);
+          if (nextNodeId) {
+            this.logger.log(
+              `Re-routing session ${session.id}: input matched list row "${matched.title}" on node ${node.id}, jumping to ${nextNodeId}`,
+            );
+            await this.sessionService.advanceToNode(session.id, nextNodeId, 'ACTIVE');
+            await this.sessionService.resetRetry(session.id);
+            await this.executeFromNode(session.id, nextNodeId, ctx);
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   // ═══════════════════════════════════════════════════════
