@@ -381,6 +381,18 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     ctx: ExecutionContext,
     input: IncomingMessage,
   ): Promise<boolean> {
+    // If the current node expects free-text input (ask_question) but the user
+    // clicked a button/list row from a previous message, try rerouting first.
+    // This prevents interactive selections from being swallowed as text answers.
+    if (
+      currentNode.type === 'ask_question' &&
+      (input.buttonId || input.listRowId)
+    ) {
+      const rerouted = await this.tryRerouteToFlowNode(session, currentNode, input, ctx);
+      if (rerouted) return true;
+      // No match found — fall through and treat it as a text answer
+    }
+
     // Execute the current node with the input
     const handler = this.registry.get(currentNode.type);
     if (!handler) {
