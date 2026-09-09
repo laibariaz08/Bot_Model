@@ -25,7 +25,7 @@ export class ChatController {
     @Query('hub.challenge') challenge: string,
     @Query('hub.verify_token') token: string,
   ) {
-    const verifyToken = process.env.VERIFY_TOKEN;
+    const verifyToken = process.env.VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN;
     if (mode === 'subscribe' && token === verifyToken) {
       this.logger.log('Webhook verified successfully');
       return challenge;
@@ -34,6 +34,31 @@ export class ChatController {
     return null;
   }
 
+  // ─── Instagram Webhook ───────────────────────────────────
+  @Get('instagram-webhook')
+  verifyInstagramWebhook(
+    @Query('hub.mode') mode: string,
+    @Query('hub.challenge') challenge: string,
+    @Query('hub.verify_token') token: string,
+  ) {
+    const verifyToken = process.env.VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN;
+    if (mode === 'subscribe' && token === verifyToken) {
+      this.logger.log('Instagram webhook verified successfully');
+      return challenge;
+    }
+    this.logger.warn('Instagram webhook verification failed');
+    return null;
+  }
+
+  @Post('instagram-webhook')
+  async handleInstagramWebhook(@Body() body: any) {
+    this.logger.log('Instagram webhook received');
+    this.logger.debug(JSON.stringify(body, null, 2));
+    // TODO: full Instagram message handling (Phase 2)
+    return { status: 'ok' };
+  }
+
+  // ─── WhatsApp Webhook ──────────────────────────────────
   @Post('webhook')
   async handleWebhook(@Body() body: any) {
     this.logger.log('Webhook received');
