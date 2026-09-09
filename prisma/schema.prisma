@@ -18,6 +18,11 @@ model Business {
   whatsappAccessToken   String? // Store encrypted in production
   whatsappIsActive      Boolean @default(false)
 
+  // Instagram Configuration
+  instagramPageId     String?  @unique
+  instagramAccessToken String?
+  instagramIsActive    Boolean @default(false)
+
   // AI Agent Configuration
   agentName         String?
   agentInstructions String?
@@ -53,12 +58,14 @@ model User {
 }
 
 model Chat {
-  id           String   @id @default(cuid())
-  userPhone    String
-  businessId   String
-  createdAt    DateTime @default(now())
-  isResolved   Boolean  @default(false)
-  isRequesting Boolean  @default(false)
+  id             String   @id @default(cuid())
+  userPhone      String
+  businessId     String
+  createdAt      DateTime @default(now())
+  isResolved     Boolean  @default(false)
+  isRequesting   Boolean  @default(false)
+  channel        String   @default("whatsapp") // "whatsapp" | "instagram"
+  userIdentifier String?  // Instagram-scoped user ID (IGSID) for Instagram chats
 
   business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   messages         Message[]

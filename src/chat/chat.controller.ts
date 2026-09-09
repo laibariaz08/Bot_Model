@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Query, Logger, BadRequestException, NotFou
 import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { InstagramService } from '../instagram/instagram.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/normalize-phone';
@@ -15,6 +16,7 @@ export class ChatController {
     private chatService: ChatService,
     private aiService: AiService,
     private whatsappService: WhatsappService,
+    private instagramService: InstagramService,
     private workflowEngine: WorkflowEngineService,
     private prisma: PrismaService,
   ) {}
@@ -53,9 +55,102 @@ export class ChatController {
   @Post('instagram-webhook')
   async handleInstagramWebhook(@Body() body: any) {
     this.logger.log('Instagram webhook received');
-    this.logger.debug(JSON.stringify(body, null, 2));
-    // TODO: full Instagram message handling (Phase 2)
-    return { status: 'ok' };
+
+    let trackedMessageId: string | undefined;
+    try {
+      const incomingData = this.instagramService.processIncomingMessage(body);
+      if (!incomingData) return { status: 'ok' };
+
+      const { senderId, recipientId, messageId, text, type, quickReplyPayload } = incomingData;
+      trackedMessageId = messageId;
+      this.logger.log(`Instagram message from ${senderId}: ${text || quickReplyPayload || '[attachment]'}`);
+
+      // Deduplicate
+      if (messageId) {
+        if (this.processingMessages.has(messageId)) {
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+        this.processingMessages.add(messageId);
+
+        const existing = await this.prisma.message.findFirst({
+          where: { whatsappMessageId: messageId },
+        });
+        if (existing) {
+          this.processingMessages.delete(messageId);
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+      }
+
+      // Find business by Instagram page ID
+      const business = await this.chatService.findBusinessByInstagramId(recipientId);
+      if (!business) {
+        this.logger.warn(`Business not found for Instagram page ID ${recipientId}`);
+        return { status: 'ok', message: 'No business found for this Instagram account' };
+      }
+
+      const credentials = {
+        pageId: business.instagramPageId!,
+        accessToken: business.instagramAccessToken!,
+      };
+
+      // Mark as seen
+      await this.instagramService.markAsSeen(senderId, credentials);
+
+      // Find or create Instagram chat
+      const chat = await this.chatService.findOrCreateInstagramChat(senderId, business.id);
+
+      // Map quick_reply / postback payload to buttonId for workflow engine
+      const buttonId = (type === 'quick_reply' || type === 'postback') ? quickReplyPayload : undefined;
+      const messageText = text || buttonId || '[attachment]';
+
+      await this.chatService.saveMessage(chat.id, 'user', messageText, messageId);
+
+      // Workflow engine check (pass channel: 'instagram')
+      const handledByWorkflow = await this.workflowEngine.processMessage(
+        chat.id,
+        business.id,
+        {
+          from: senderId,
+          text: messageText,
+          type: type || 'text',
+          buttonId,
+          listRowId: buttonId, // quick replies serve as both button and list row selections
+          messageId,
+        },
+        'instagram',
+      );
+
+      if (handledByWorkflow) {
+        this.logger.log('Instagram message handled by workflow engine');
+        return { status: 'ok', message: 'Handled by workflow' };
+      }
+
+      // AI fallback
+      const history = await this.chatService.getChatHistory(chat.id);
+      const knowledge = await this.chatService.getKnowledge(business.id);
+      const aiResponse = await this.aiService.getResponse(messageText, history, knowledge, {
+        agentName: business.agentName,
+        agentInstructions: business.agentInstructions,
+        websiteUrl: business.websiteUrl,
+      });
+
+      if (aiResponse) {
+        const sendResult = await this.instagramService.sendMessage(senderId, aiResponse, credentials);
+        const sentId = sendResult?.message_id;
+        await this.chatService.saveMessage(chat.id, 'assistant', aiResponse, sentId);
+        this.logger.log(`AI reply sent to Instagram user ${senderId}`);
+      }
+
+      return { status: 'ok', message: 'Processed by AI' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error handling Instagram webhook: ${errorMessage}`);
+      return { status: 'error', message: errorMessage };
+    } finally {
+      if (trackedMessageId) {
+        this.processingMessages.delete(trackedMessageId);
+      }
+    }
   }
 
   // ─── WhatsApp Webhook ──────────────────────────────────

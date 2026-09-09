@@ -5,6 +5,8 @@ import { NodeHandlerRegistry } from './node-handler.registry';
 import { WorkflowSessionService } from './workflow-session.service';
 import { VariableResolver } from './variable-resolver.service';
 import { WhatsAppChannelAdapter } from './whatsapp-channel.adapter';
+import { InstagramChannelAdapter } from './instagram-channel.adapter';
+import type { ChannelAdapter } from './channel-adapter.interface';
 import type {
   WorkflowNode,
   WorkflowEdge,
@@ -53,6 +55,8 @@ const SESSION_EXPIRY_MINUTES = 24 * 60;
 export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkflowEngineService.name);
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
+  private activeAdapter: WhatsAppChannelAdapter | InstagramChannelAdapter;
+  private activeChannel: 'whatsapp' | 'instagram' = 'whatsapp';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -60,7 +64,8 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly registry: NodeHandlerRegistry,
     private readonly sessionService: WorkflowSessionService,
     private readonly variableResolver: VariableResolver,
-    private readonly channelAdapter: WhatsAppChannelAdapter,
+    private readonly whatsappAdapter: WhatsAppChannelAdapter,
+    private readonly instagramAdapter: InstagramChannelAdapter,
     // Individual handlers injected for registration
     private readonly startHandler: StartHandler,
     private readonly sendMessageHandler: SendMessageHandler,
@@ -108,6 +113,10 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private getAdapter(channel: 'whatsapp' | 'instagram'): WhatsAppChannelAdapter | InstagramChannelAdapter {
+    return channel === 'instagram' ? this.instagramAdapter : this.whatsappAdapter;
+  }
+
   // ═══════════════════════════════════════════════════════
   //  MAIN ENTRY POINT
   // ═══════════════════════════════════════════════════════
@@ -129,6 +138,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       listRowId?: string;
       messageId: string;
     },
+    channel: 'whatsapp' | 'instagram' = 'whatsapp',
   ): Promise<boolean> {
     const input: IncomingMessage = {
       from: incomingData.from,
@@ -138,6 +148,9 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       listRowId: incomingData.listRowId,
       messageId: incomingData.messageId,
     };
+
+    this.activeChannel = channel;
+    this.activeAdapter = this.getAdapter(channel);
 
     try {
       // 1. Check for handed-over session — skip workflow entirely
@@ -315,13 +328,13 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     };
 
     // Set chatId on adapter so outgoing messages are saved to chat history
-    this.channelAdapter.setChatId(chatId);
+    this.activeAdapter.setChatId(chatId);
 
     try {
       // Execute from start node
       await this.executeFromNode(session.id, startNode.id, ctx, input);
     } finally {
-      this.channelAdapter.setChatId(null);
+      this.activeAdapter.setChatId(null);
     }
   }
 
@@ -366,12 +379,12 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     };
 
     // Set chatId on adapter so outgoing messages are saved to chat history
-    this.channelAdapter.setChatId(session.chatId);
+    this.activeAdapter.setChatId(session.chatId);
 
     try {
       return await this._handleInputInner(session, currentNode, ctx, input);
     } finally {
-      this.channelAdapter.setChatId(null);
+      this.activeAdapter.setChatId(null);
     }
   }
 
@@ -712,7 +725,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       );
 
       if (aiResponse) {
-        await this.channelAdapter.sendTextMessage(
+        await this.activeAdapter.sendTextMessage(
           input.from,
           aiResponse,
           ctx.credentials,
@@ -764,10 +777,21 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
   private async getBusinessCredentials(businessId: string): Promise<BusinessCredentials> {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
-      select: { whatsappPhoneNumberId: true, whatsappAccessToken: true },
+      select: {
+        whatsappPhoneNumberId: true,
+        whatsappAccessToken: true,
+        instagramPageId: true,
+        instagramAccessToken: true,
+      },
     });
 
-    // Fall back to env vars if business doesn't have per-business credentials
+    if (this.activeChannel === 'instagram') {
+      return {
+        phoneNumberId: business?.instagramPageId || '',
+        accessToken: business?.instagramAccessToken || '',
+      };
+    }
+
     return {
       phoneNumberId: business?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '',
       accessToken: business?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || '',

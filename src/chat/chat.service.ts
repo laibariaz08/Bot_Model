@@ -19,16 +19,44 @@ export class ChatService {
     });
   }
 
+  // Find business by Instagram page ID
+  async findBusinessByInstagramId(pageId: string) {
+    return this.prisma.business.findFirst({
+      where: { instagramPageId: pageId },
+    });
+  }
+
   // 2. Find or create chat — reuse the latest non-resolved chat for this phone
   async findOrCreateChat(userPhone: string, businessId: string) {
     let chat = await this.prisma.chat.findFirst({
-      where: { userPhone, businessId, isResolved: false },
+      where: { userPhone, businessId, isResolved: false, channel: 'whatsapp' },
       orderBy: { createdAt: 'desc' },
     });
 
     if (!chat) {
       chat = await this.prisma.chat.create({
-        data: { userPhone, businessId },
+        data: { userPhone, businessId, channel: 'whatsapp' },
+      });
+    }
+
+    return chat;
+  }
+
+  // Find or create Instagram chat — keyed by IGSID (Instagram-scoped user ID)
+  async findOrCreateInstagramChat(igsid: string, businessId: string) {
+    let chat = await this.prisma.chat.findFirst({
+      where: { userIdentifier: igsid, businessId, isResolved: false, channel: 'instagram' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!chat) {
+      chat = await this.prisma.chat.create({
+        data: {
+          userPhone: igsid,
+          userIdentifier: igsid,
+          businessId,
+          channel: 'instagram',
+        },
       });
     }
 
