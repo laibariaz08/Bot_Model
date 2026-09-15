@@ -328,6 +328,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       businessName: business?.name || '',
       nodes,
       edges,
+      channel: this.activeAdapter,
     };
 
     // Set chatId on adapter so outgoing messages are saved to chat history
@@ -379,6 +380,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       businessName: business?.name || '',
       nodes,
       edges,
+      channel: this.activeAdapter,
     };
 
     // Set chatId on adapter so outgoing messages are saved to chat history

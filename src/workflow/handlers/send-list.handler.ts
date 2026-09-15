@@ -1,23 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 
-/**
- * SendListHandler
- *
- * Sends an interactive list message (max 10 rows across sections).
- * On first execution: sends the message and returns WAIT.
- * On resume: matches the selected row to an output handle.
- *
- * Config: { body: string, buttonText: string, sections: Array<{ title, rows: Array<{ id, title, description? }> }> }
- * Outputs: one per row ID (sourceHandle = row.id) + optional 'fallback'
- */
 @Injectable()
 export class SendListHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
   ) {}
 
   async execute(
@@ -92,7 +80,7 @@ export class SendListHandler implements NodeHandler {
     const body = this.variables.resolveText(config.body || '', resolveCtx);
     const buttonText = config.buttonText || 'View Options';
 
-    const result = await this.channel.sendListMessage(
+    const result = await ctx.channel.sendListMessage(
       ctx.customerPhone,
       body,
       buttonText,

@@ -1,23 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 
-/**
- * SendButtonsHandler
- *
- * Sends an interactive button message (max 3 buttons).
- * On first execution: sends the message and returns WAIT.
- * On resume (input provided): matches the button click to an output handle.
- *
- * Config: { body: string, footer?: string, buttons: Array<{ id: string, title: string }> }
- * Outputs: one per button (sourceHandle = button.id) + optional 'fallback'
- */
 @Injectable()
 export class SendButtonsHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
   ) {}
 
   async execute(
@@ -92,7 +80,7 @@ export class SendButtonsHandler implements NodeHandler {
       ? this.variables.resolveText(config.footer, resolveCtx)
       : undefined;
 
-    const result = await this.channel.sendButtonMessage(
+    const result = await ctx.channel.sendButtonMessage(
       ctx.customerPhone,
       body,
       buttons,

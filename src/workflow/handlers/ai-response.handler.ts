@@ -1,27 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 import { AiService } from '../../ai/ai.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/**
- * AiResponseHandler
- *
- * Passes conversation to the AI engine for a dynamic response.
- * Can optionally extract structured data from the AI output.
- *
- * Config: {
- *   prompt?: string,           // additional system context
- *   extractVariables?: Array<{ name: string, description: string }>,
- *   historyDepth?: number      // how many recent messages to include (default 5)
- * }
- */
 @Injectable()
 export class AiResponseHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
     private readonly aiService: AiService,
     private readonly prisma: PrismaService,
   ) {}
@@ -112,7 +98,7 @@ export class AiResponseHandler implements NodeHandler {
       }
 
       // Send AI response to customer
-      const sendResult = await this.channel.sendTextMessage(
+      const sendResult = await ctx.channel.sendTextMessage(
         ctx.customerPhone,
         cleanResponse,
         ctx.credentials,

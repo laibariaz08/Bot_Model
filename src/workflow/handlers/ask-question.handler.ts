@@ -1,29 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 
-/**
- * AskQuestionHandler
- *
- * Sends a question, waits for free-text input, validates it,
- * and stores the response in a session variable.
- *
- * Config: {
- *   question: string,
- *   variableName: string,
- *   inputType: 'text'|'email'|'phone'|'number'|'date'|'time'|'selection',
- *   validation?: { pattern?: string, min?: number, max?: number },
- *   required: boolean,
- *   retryMessage?: string,
- *   maxRetries?: number
- * }
- */
 @Injectable()
 export class AskQuestionHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
   ) {}
 
   async execute(
@@ -63,7 +45,7 @@ export class AskQuestionHandler implements NodeHandler {
           { text: answer },
           ctx.businessName,
         );
-        await this.channel.sendTextMessage(
+        await ctx.channel.sendTextMessage(
           ctx.customerPhone,
           this.variables.resolveText(retryMsg, resolveCtx),
           ctx.credentials,
@@ -94,7 +76,7 @@ export class AskQuestionHandler implements NodeHandler {
     );
     const question = this.variables.resolveText(config.question || 'Please provide your input:', resolveCtx);
 
-    const result = await this.channel.sendTextMessage(
+    const result = await ctx.channel.sendTextMessage(
       ctx.customerPhone,
       question,
       ctx.credentials,

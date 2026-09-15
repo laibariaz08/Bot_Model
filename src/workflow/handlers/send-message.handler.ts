@@ -1,22 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 
-/**
- * SendMessageHandler
- *
- * Sends a plain text message to the customer.
- * Supports variable interpolation in the message body.
- * Optionally applies a delay before sending.
- *
- * Config: { message: string, delay?: number (ms) }
- */
 @Injectable()
 export class SendMessageHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
   ) {}
 
   async execute(
@@ -46,7 +35,7 @@ export class SendMessageHandler implements NodeHandler {
     }
 
     // Send via channel adapter
-    const result = await this.channel.sendTextMessage(
+    const result = await ctx.channel.sendTextMessage(
       ctx.customerPhone,
       message,
       ctx.credentials,

@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { NodeHandler, WorkflowNode, ExecutionContext, IncomingMessage, NodeResult } from '../node-handler.interface';
 import { VariableResolver } from '../variable-resolver.service';
-import { WhatsAppChannelAdapter } from '../whatsapp-channel.adapter';
 
 @Injectable()
 export class SendMediaHandler implements NodeHandler {
   constructor(
     private readonly variables: VariableResolver,
-    private readonly channel: WhatsAppChannelAdapter,
   ) {}
 
   async execute(
@@ -38,7 +36,7 @@ export class SendMediaHandler implements NodeHandler {
       await new Promise((r) => setTimeout(r, Math.min(config.delay, 10000)));
     }
 
-    const result = await this.channel.sendMediaMessage(
+    const result = await ctx.channel.sendMediaMessage(
       ctx.customerPhone,
       {
         type: mediaType as 'image' | 'document' | 'video' | 'audio',

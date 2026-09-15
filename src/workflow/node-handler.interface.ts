@@ -1,4 +1,4 @@
-import type { SendResult, BusinessCredentials } from './channel-adapter.interface';
+import type { SendResult, BusinessCredentials, ChannelAdapter } from './channel-adapter.interface';
 
 /**
  * Represents a single node in the workflow graph (deserialized from JSON).
@@ -57,6 +57,8 @@ export interface ExecutionContext {
   nodes: WorkflowNode[];
   /** All edges in the workflow */
   edges: WorkflowEdge[];
+  /** The active channel adapter (WhatsApp or Instagram) */
+  channel: ChannelAdapter;
 }
 
 /**
