@@ -55,11 +55,15 @@ export class ChatController {
   @Post('instagram-webhook')
   async handleInstagramWebhook(@Body() body: any) {
     this.logger.log('Instagram webhook received');
+    this.logger.log(`Instagram payload: ${JSON.stringify(body).substring(0, 500)}`);
 
     let trackedMessageId: string | undefined;
     try {
       const incomingData = this.instagramService.processIncomingMessage(body);
-      if (!incomingData) return { status: 'ok' };
+      if (!incomingData) {
+        this.logger.warn('Instagram processIncomingMessage returned null — payload not recognized');
+        return { status: 'ok' };
+      }
 
       const { senderId, recipientId, messageId, text, type, quickReplyPayload } = incomingData;
       trackedMessageId = messageId;
