@@ -19,7 +19,8 @@ model Business {
   whatsappIsActive      Boolean @default(false)
 
   // Instagram Configuration
-  instagramPageId     String?  @unique
+  instagramPageId      String?  @unique
+  instagramFbPageId    String?
   instagramAccessToken String?
   instagramIsActive    Boolean @default(false)
 

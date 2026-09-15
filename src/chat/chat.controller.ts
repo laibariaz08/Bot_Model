@@ -93,7 +93,7 @@ export class ChatController {
       }
 
       const credentials = {
-        pageId: business.instagramPageId!,
+        pageId: business.instagramFbPageId || business.instagramPageId!,
         accessToken: business.instagramAccessToken!,
       };
 

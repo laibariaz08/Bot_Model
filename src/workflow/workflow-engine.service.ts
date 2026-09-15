@@ -786,13 +786,14 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
         whatsappPhoneNumberId: true,
         whatsappAccessToken: true,
         instagramPageId: true,
+        instagramFbPageId: true,
         instagramAccessToken: true,
       },
     });
 
     if (this.activeChannel === 'instagram') {
       return {
-        phoneNumberId: business?.instagramPageId || '',
+        phoneNumberId: business?.instagramFbPageId || business?.instagramPageId || '',
         accessToken: business?.instagramAccessToken || '',
       };
     }
