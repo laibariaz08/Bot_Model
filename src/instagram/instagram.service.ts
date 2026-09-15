@@ -202,6 +202,43 @@ export class InstagramService {
   }
 
   /**
+   * Send a media attachment (image, video, audio, file).
+   */
+  async sendAttachment(
+    recipientId: string,
+    type: string,
+    url: string,
+    credentials: InstagramCredentials,
+  ) {
+    try {
+      const response = await axios.post(
+        `${this.baseURL}/${credentials.pageId}/messages`,
+        {
+          recipient: { id: recipientId },
+          message: {
+            attachment: {
+              type,
+              payload: { url, is_reusable: true },
+            },
+          },
+        },
+        {
+          headers: { Authorization: `Bearer ${credentials.accessToken}` },
+        },
+      );
+      this.logger.log(`Instagram attachment (${type}) sent to ${recipientId}: ${response.data?.message_id}`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.logger.error(`Error sending attachment: ${JSON.stringify(error.response?.data || error.message)}`);
+      } else {
+        this.logger.error(`Error sending attachment: ${error instanceof Error ? error.message : error}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Mark a message as seen (read receipt).
    */
   async markAsSeen(recipientId: string, credentials: InstagramCredentials) {

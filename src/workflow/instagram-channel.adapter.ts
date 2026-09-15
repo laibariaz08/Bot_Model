@@ -7,6 +7,7 @@ import type {
   BusinessCredentials,
   ButtonPayload,
   ListSection,
+  MediaPayload,
 } from './channel-adapter.interface';
 
 /**
@@ -146,6 +147,35 @@ export class InstagramChannelAdapter implements ChannelAdapter {
       return { success: true, messageId };
     } catch (error) {
       return this.handleError('sendListMessage', error);
+    }
+  }
+
+  // ─── Media Message ─────────────────────────────────────
+
+  async sendMediaMessage(
+    to: string,
+    media: MediaPayload,
+    credentials: BusinessCredentials,
+  ): Promise<SendResult> {
+    try {
+      const igCreds = this.toInstagramCredentials(credentials);
+      // Instagram supports sending image, video, audio, and file attachments
+      const igType = media.type === 'document' ? 'file' : media.type;
+      const response = await this.instagram.sendAttachment(to, igType, media.url, igCreds);
+      const messageId = response?.message_id;
+      await this.saveOutgoingMessage(
+        media.caption || `[${media.type}]`,
+        media.type,
+        { url: media.url, filename: media.filename },
+        messageId,
+      );
+      // If there's a caption, send it as a follow-up text
+      if (media.caption) {
+        await this.instagram.sendMessage(to, media.caption, igCreds);
+      }
+      return { success: true, messageId };
+    } catch (error) {
+      return this.handleError('sendMediaMessage', error);
     }
   }
 

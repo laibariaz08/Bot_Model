@@ -7,6 +7,7 @@ import type {
   BusinessCredentials,
   ButtonPayload,
   ListSection,
+  MediaPayload,
 } from './channel-adapter.interface';
 
 /**
@@ -223,6 +224,46 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
       return { success: true, messageId };
     } catch (error) {
       return this.handleError('sendListMessage', error);
+    }
+  }
+
+  // ─── Media Message ─────────────────────────────────────
+
+  async sendMediaMessage(
+    to: string,
+    media: MediaPayload,
+    credentials: BusinessCredentials,
+  ): Promise<SendResult> {
+    try {
+      const mediaObject: any = { link: media.url };
+      if (media.caption) mediaObject.caption = media.caption;
+      if (media.type === 'document' && media.filename) {
+        mediaObject.filename = media.filename;
+      }
+
+      const response = await axios.post(
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: media.type,
+          [media.type]: mediaObject,
+        },
+        { headers: { Authorization: `Bearer ${credentials.accessToken}` } },
+      );
+
+      const messageId = response.data?.messages?.[0]?.id;
+      this.logger.log(`Media (${media.type}) sent to ${to}: ${messageId}`);
+      await this.saveOutgoingMessage(
+        media.caption || `[${media.type}]`,
+        media.type,
+        { url: media.url, filename: media.filename },
+        messageId,
+      );
+      return { success: true, messageId };
+    } catch (error) {
+      return this.handleError('sendMediaMessage', error);
     }
   }
 

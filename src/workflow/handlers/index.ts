@@ -2,6 +2,7 @@ export { StartHandler } from './start.handler';
 export { SendMessageHandler } from './send-message.handler';
 export { SendButtonsHandler } from './send-buttons.handler';
 export { SendListHandler } from './send-list.handler';
+export { SendMediaHandler } from './send-media.handler';
 export { AskQuestionHandler } from './ask-question.handler';
 export { ConditionHandler } from './condition.handler';
 export { AiResponseHandler } from './ai-response.handler';

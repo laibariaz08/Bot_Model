@@ -30,6 +30,13 @@ export interface ListSection {
   }>;
 }
 
+export interface MediaPayload {
+  type: 'image' | 'document' | 'video' | 'audio';
+  url: string;
+  caption?: string;
+  filename?: string;
+}
+
 export interface ChannelAdapter {
   sendTextMessage(
     to: string,
@@ -52,5 +59,11 @@ export interface ChannelAdapter {
     sections: ListSection[],
     credentials: BusinessCredentials,
     footer?: string,
+  ): Promise<SendResult>;
+
+  sendMediaMessage(
+    to: string,
+    media: MediaPayload,
+    credentials: BusinessCredentials,
   ): Promise<SendResult>;
 }
