@@ -6,6 +6,7 @@ import { WorkflowSessionService } from './workflow-session.service';
 import { VariableResolver } from './variable-resolver.service';
 import { WhatsAppChannelAdapter } from './whatsapp-channel.adapter';
 import { InstagramChannelAdapter } from './instagram-channel.adapter';
+import { MessengerChannelAdapter } from './messenger-channel.adapter';
 import type { ChannelAdapter } from './channel-adapter.interface';
 import type {
   WorkflowNode,
@@ -56,8 +57,8 @@ const SESSION_EXPIRY_MINUTES = 24 * 60;
 export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkflowEngineService.name);
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
-  private activeAdapter: WhatsAppChannelAdapter | InstagramChannelAdapter;
-  private activeChannel: 'whatsapp' | 'instagram' = 'whatsapp';
+  private activeAdapter: WhatsAppChannelAdapter | InstagramChannelAdapter | MessengerChannelAdapter;
+  private activeChannel: 'whatsapp' | 'instagram' | 'messenger' = 'whatsapp';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -67,6 +68,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly variableResolver: VariableResolver,
     private readonly whatsappAdapter: WhatsAppChannelAdapter,
     private readonly instagramAdapter: InstagramChannelAdapter,
+    private readonly messengerAdapter: MessengerChannelAdapter,
     // Individual handlers injected for registration
     private readonly startHandler: StartHandler,
     private readonly sendMessageHandler: SendMessageHandler,
@@ -116,8 +118,10 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private getAdapter(channel: 'whatsapp' | 'instagram'): WhatsAppChannelAdapter | InstagramChannelAdapter {
-    return channel === 'instagram' ? this.instagramAdapter : this.whatsappAdapter;
+  private getAdapter(channel: 'whatsapp' | 'instagram' | 'messenger'): WhatsAppChannelAdapter | InstagramChannelAdapter | MessengerChannelAdapter {
+    if (channel === 'instagram') return this.instagramAdapter;
+    if (channel === 'messenger') return this.messengerAdapter;
+    return this.whatsappAdapter;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -141,7 +145,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
       listRowId?: string;
       messageId: string;
     },
-    channel: 'whatsapp' | 'instagram' = 'whatsapp',
+    channel: 'whatsapp' | 'instagram' | 'messenger' = 'whatsapp',
   ): Promise<boolean> {
     const input: IncomingMessage = {
       from: incomingData.from,

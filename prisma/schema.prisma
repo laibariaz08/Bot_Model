@@ -24,6 +24,11 @@ model Business {
   instagramAccessToken String?
   instagramIsActive    Boolean @default(false)
 
+  // Messenger Configuration
+  messengerPageId      String?  @unique
+  messengerAccessToken String?
+  messengerIsActive    Boolean @default(false)
+
   // AI Agent Configuration
   agentName         String?
   agentInstructions String?
@@ -65,7 +70,7 @@ model Chat {
   createdAt      DateTime @default(now())
   isResolved     Boolean  @default(false)
   isRequesting   Boolean  @default(false)
-  channel        String   @default("whatsapp") // "whatsapp" | "instagram"
+  channel        String   @default("whatsapp") // "whatsapp" | "instagram" | "messenger"
   userIdentifier String?  // Instagram-scoped user ID (IGSID) for Instagram chats
 
   business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)

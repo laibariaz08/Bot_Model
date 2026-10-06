@@ -6,7 +6,9 @@ import { AiModule } from '../ai/ai.module';
 import { VariableResolver } from './variable-resolver.service';
 import { WhatsAppChannelAdapter } from './whatsapp-channel.adapter';
 import { InstagramChannelAdapter } from './instagram-channel.adapter';
+import { MessengerChannelAdapter } from './messenger-channel.adapter';
 import { InstagramService } from '../instagram/instagram.service';
+import { MessengerService } from '../messenger/messenger.service';
 import { WorkflowSessionService } from './workflow-session.service';
 
 // Phase 2 — Engine + Handlers
@@ -34,7 +36,9 @@ import {
     VariableResolver,
     WhatsAppChannelAdapter,
     InstagramChannelAdapter,
+    MessengerChannelAdapter,
     InstagramService,
+    MessengerService,
     WorkflowSessionService,
 
     // Registry + Engine

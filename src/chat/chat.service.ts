@@ -26,6 +26,13 @@ export class ChatService {
     });
   }
 
+  // Find business by Messenger page ID
+  async findBusinessByMessengerId(pageId: string) {
+    return this.prisma.business.findFirst({
+      where: { messengerPageId: pageId },
+    });
+  }
+
   // 2. Find or create chat — reuse the latest non-resolved chat for this phone
   async findOrCreateChat(userPhone: string, businessId: string) {
     let chat = await this.prisma.chat.findFirst({
@@ -56,6 +63,27 @@ export class ChatService {
           userIdentifier: igsid,
           businessId,
           channel: 'instagram',
+        },
+      });
+    }
+
+    return chat;
+  }
+
+  // Find or create Messenger chat — keyed by page-scoped sender ID
+  async findOrCreateMessengerChat(senderId: string, businessId: string) {
+    let chat = await this.prisma.chat.findFirst({
+      where: { userIdentifier: senderId, businessId, isResolved: false, channel: 'messenger' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!chat) {
+      chat = await this.prisma.chat.create({
+        data: {
+          userPhone: senderId,
+          userIdentifier: senderId,
+          businessId,
+          channel: 'messenger',
         },
       });
     }

@@ -5,12 +5,13 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AiModule } from '../ai/ai.module';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { InstagramService } from '../instagram/instagram.service';
+import { MessengerService } from '../messenger/messenger.service';
 import { WorkflowModule } from '../workflow/workflow.module';
 
 @Module({
   imports: [PrismaModule, AiModule, WorkflowModule],
   controllers: [ChatController],
-  providers: [ChatService, WhatsappService, InstagramService],
-  exports: [ChatService, WhatsappService, InstagramService],
+  providers: [ChatService, WhatsappService, InstagramService, MessengerService],
+  exports: [ChatService, WhatsappService, InstagramService, MessengerService],
 })
 export class ChatModule {}

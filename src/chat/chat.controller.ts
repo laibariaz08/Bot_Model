@@ -3,6 +3,7 @@ import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { InstagramService } from '../instagram/instagram.service';
+import { MessengerService } from '../messenger/messenger.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/normalize-phone';
@@ -17,6 +18,7 @@ export class ChatController {
     private aiService: AiService,
     private whatsappService: WhatsappService,
     private instagramService: InstagramService,
+    private messengerService: MessengerService,
     private workflowEngine: WorkflowEngineService,
     private prisma: PrismaService,
   ) {}
@@ -157,6 +159,120 @@ export class ChatController {
     }
   }
 
+  // ─── Messenger Webhook ───────────────────────────────────
+  @Get('messenger-webhook')
+  verifyMessengerWebhook(
+    @Query('hub.mode') mode: string,
+    @Query('hub.challenge') challenge: string,
+    @Query('hub.verify_token') token: string,
+  ) {
+    const verifyToken = process.env.META_MESSENGER_VERIFY_TOKEN || process.env.VERIFY_TOKEN || 'synafex-messenger-verify';
+    if (mode === 'subscribe' && token === verifyToken) {
+      this.logger.log('Messenger webhook verified successfully');
+      return challenge;
+    }
+    this.logger.warn('Messenger webhook verification failed');
+    return null;
+  }
+
+  @Post('messenger-webhook')
+  async handleMessengerWebhook(@Body() body: any) {
+    this.logger.log('Messenger webhook received');
+    this.logger.log(`Messenger payload: ${JSON.stringify(body).substring(0, 500)}`);
+
+    let trackedMessageId: string | undefined;
+    try {
+      const incomingData = this.messengerService.processIncomingMessage(body);
+      if (!incomingData) {
+        this.logger.warn('Messenger processIncomingMessage returned null');
+        return { status: 'ok' };
+      }
+
+      const { senderId, recipientId, messageId, text, type, quickReplyPayload } = incomingData;
+      trackedMessageId = messageId;
+      this.logger.log(`Messenger message from ${senderId}: ${text || quickReplyPayload || '[attachment]'}`);
+
+      if (messageId) {
+        if (this.processingMessages.has(messageId)) {
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+        this.processingMessages.add(messageId);
+
+        const existing = await this.prisma.message.findFirst({
+          where: { whatsappMessageId: messageId },
+        });
+        if (existing) {
+          this.processingMessages.delete(messageId);
+          return { status: 'ok', message: 'Duplicate ignored' };
+        }
+      }
+
+      const business = await this.chatService.findBusinessByMessengerId(recipientId);
+      if (!business) {
+        this.logger.warn(`Business not found for Messenger page ID ${recipientId}`);
+        return { status: 'ok', message: 'No business found for this Messenger page' };
+      }
+
+      const credentials = {
+        pageId: business.messengerPageId!,
+        accessToken: business.messengerAccessToken!,
+      };
+
+      await this.messengerService.markAsSeen(senderId, credentials);
+
+      const chat = await this.chatService.findOrCreateMessengerChat(senderId, business.id);
+
+      const buttonId = (type === 'quick_reply' || type === 'postback') ? quickReplyPayload : undefined;
+      const messageText = text || buttonId || '[attachment]';
+
+      await this.chatService.saveMessage(chat.id, 'user', messageText, messageId);
+
+      const handledByWorkflow = await this.workflowEngine.processMessage(
+        chat.id,
+        business.id,
+        {
+          from: senderId,
+          text: messageText,
+          type: type || 'text',
+          buttonId,
+          listRowId: buttonId,
+          messageId,
+        },
+        'messenger',
+      );
+
+      if (handledByWorkflow) {
+        this.logger.log('Messenger message handled by workflow engine');
+        return { status: 'ok', message: 'Handled by workflow' };
+      }
+
+      const history = await this.chatService.getChatHistory(chat.id);
+      const knowledge = await this.chatService.getKnowledge(business.id);
+      const aiResponse = await this.aiService.getResponse(messageText, history, knowledge, {
+        agentName: business.agentName,
+        agentInstructions: business.agentInstructions,
+        websiteUrl: business.websiteUrl,
+      });
+
+      if (aiResponse) {
+        const sendResult = await this.messengerService.sendMessage(senderId, aiResponse, credentials);
+        const sentId = sendResult?.message_id;
+        await this.chatService.saveMessage(chat.id, 'assistant', aiResponse, sentId);
+        this.logger.log(`AI reply sent to Messenger user ${senderId}`);
+      }
+
+      return { status: 'ok', message: 'Processed by AI' };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error handling Messenger webhook: ${errorMessage}`);
+      return { status: 'error', message: errorMessage };
+    } finally {
+      if (trackedMessageId) {
+        this.processingMessages.delete(trackedMessageId);
+      }
+    }
+  }
+
   // ─── WhatsApp Webhook ──────────────────────────────────
   @Post('webhook')
   async handleWebhook(@Body() body: any) {
@@ -261,6 +377,13 @@ export class ChatController {
             whatsappPhoneNumberId: true,
             whatsappAccessToken: true,
             whatsappIsActive: true,
+            instagramPageId: true,
+            instagramFbPageId: true,
+            instagramAccessToken: true,
+            instagramIsActive: true,
+            messengerPageId: true,
+            messengerAccessToken: true,
+            messengerIsActive: true,
           },
         },
       },
@@ -268,27 +391,58 @@ export class ChatController {
 
     if (!chat) throw new NotFoundException('Chat not found');
 
-    if (!chat.business.whatsappIsActive || !chat.business.whatsappPhoneNumberId || !chat.business.whatsappAccessToken) {
-      throw new BadRequestException('WhatsApp is not configured or inactive for this business');
+    const channel = chat.channel || 'whatsapp';
+    let externalMessageId: string | undefined;
+
+    if (channel === 'instagram') {
+      if (!chat.business.instagramIsActive || !chat.business.instagramAccessToken) {
+        throw new BadRequestException('Instagram is not configured or inactive for this business');
+      }
+      const credentials = {
+        pageId: chat.business.instagramFbPageId || chat.business.instagramPageId!,
+        accessToken: chat.business.instagramAccessToken,
+      };
+      const sendResult = await this.instagramService.sendMessage(
+        chat.userIdentifier || chat.userPhone,
+        body.content,
+        credentials,
+      );
+      externalMessageId = sendResult?.message_id;
+    } else if (channel === 'messenger') {
+      if (!chat.business.messengerIsActive || !chat.business.messengerPageId || !chat.business.messengerAccessToken) {
+        throw new BadRequestException('Messenger is not configured or inactive for this business');
+      }
+      const credentials = {
+        pageId: chat.business.messengerPageId,
+        accessToken: chat.business.messengerAccessToken,
+      };
+      const sendResult = await this.messengerService.sendMessage(
+        chat.userIdentifier || chat.userPhone,
+        body.content,
+        credentials,
+      );
+      externalMessageId = sendResult?.message_id;
+    } else {
+      if (!chat.business.whatsappIsActive || !chat.business.whatsappPhoneNumberId || !chat.business.whatsappAccessToken) {
+        throw new BadRequestException('WhatsApp is not configured or inactive for this business');
+      }
+      const credentials = {
+        phoneNumberId: chat.business.whatsappPhoneNumberId,
+        accessToken: chat.business.whatsappAccessToken,
+      };
+      const sendResult = await this.whatsappService.sendMessage(chat.userPhone, body.content, credentials);
+      externalMessageId = sendResult?.messages?.[0]?.id;
     }
-
-    const credentials = {
-      phoneNumberId: chat.business.whatsappPhoneNumberId,
-      accessToken: chat.business.whatsappAccessToken,
-    };
-
-    const sendResult = await this.whatsappService.sendMessage(chat.userPhone, body.content, credentials);
-    const whatsappMessageId = sendResult?.messages?.[0]?.id;
 
     const message = await this.chatService.saveMessage(
       body.chatId,
       'agent',
       body.content,
-      whatsappMessageId,
+      externalMessageId,
     );
 
-    this.logger.log(`Agent reply sent to ${chat.userPhone} for chat ${body.chatId}`);
-    return { success: true, message, whatsappMessageId };
+    this.logger.log(`Agent reply sent via ${channel} to ${chat.userPhone} for chat ${body.chatId}`);
+    return { success: true, message, whatsappMessageId: externalMessageId };
   }
 
   // Test endpoint
