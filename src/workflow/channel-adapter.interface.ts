@@ -37,6 +37,15 @@ export interface MediaPayload {
   filename?: string;
 }
 
+export interface CatalogProductItem {
+  productRetailerId: string;
+}
+
+export interface CatalogSection {
+  title: string;
+  productItems: CatalogProductItem[];
+}
+
 export interface ChannelAdapter {
   sendTextMessage(
     to: string,
@@ -65,5 +74,32 @@ export interface ChannelAdapter {
     to: string,
     media: MediaPayload,
     credentials: BusinessCredentials,
+  ): Promise<SendResult>;
+
+  sendCatalogMessage(
+    to: string,
+    body: string,
+    credentials: BusinessCredentials,
+    footer?: string,
+    thumbnailProductId?: string,
+  ): Promise<SendResult>;
+
+  sendProductListMessage(
+    to: string,
+    body: string,
+    catalogId: string,
+    sections: CatalogSection[],
+    credentials: BusinessCredentials,
+    header?: string,
+    footer?: string,
+  ): Promise<SendResult>;
+
+  sendSingleProductMessage(
+    to: string,
+    body: string,
+    catalogId: string,
+    productRetailerId: string,
+    credentials: BusinessCredentials,
+    footer?: string,
   ): Promise<SendResult>;
 }

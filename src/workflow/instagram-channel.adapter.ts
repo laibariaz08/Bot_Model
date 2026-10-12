@@ -179,6 +179,20 @@ export class InstagramChannelAdapter implements ChannelAdapter {
     }
   }
 
+  // ─── Catalog (not supported on Instagram) ──────────────
+
+  async sendCatalogMessage(): Promise<SendResult> {
+    return { success: false, error: 'Catalog messages are not supported on Instagram' };
+  }
+
+  async sendProductListMessage(): Promise<SendResult> {
+    return { success: false, error: 'Product list messages are not supported on Instagram' };
+  }
+
+  async sendSingleProductMessage(): Promise<SendResult> {
+    return { success: false, error: 'Single product messages are not supported on Instagram' };
+  }
+
   // ─── Helpers ───────────────────────────────────────────
 
   private handleError(method: string, error: any): SendResult {

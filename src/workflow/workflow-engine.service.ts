@@ -24,6 +24,7 @@ import {
   SendButtonsHandler,
   SendListHandler,
   SendMediaHandler,
+  SendCatalogHandler,
   AskQuestionHandler,
   ConditionHandler,
   AiResponseHandler,
@@ -75,6 +76,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly sendButtonsHandler: SendButtonsHandler,
     private readonly sendListHandler: SendListHandler,
     private readonly sendMediaHandler: SendMediaHandler,
+    private readonly sendCatalogHandler: SendCatalogHandler,
     private readonly askQuestionHandler: AskQuestionHandler,
     private readonly conditionHandler: ConditionHandler,
     private readonly aiResponseHandler: AiResponseHandler,
@@ -91,6 +93,7 @@ export class WorkflowEngineService implements OnModuleInit, OnModuleDestroy {
     this.registry.register('send_buttons', this.sendButtonsHandler);
     this.registry.register('send_list', this.sendListHandler);
     this.registry.register('send_media', this.sendMediaHandler);
+    this.registry.register('send_catalog', this.sendCatalogHandler);
     this.registry.register('ask_question', this.askQuestionHandler);
     this.registry.register('condition', this.conditionHandler);
     this.registry.register('ai_response', this.aiResponseHandler);

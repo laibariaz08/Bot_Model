@@ -3,6 +3,7 @@ export { SendMessageHandler } from './send-message.handler';
 export { SendButtonsHandler } from './send-buttons.handler';
 export { SendListHandler } from './send-list.handler';
 export { SendMediaHandler } from './send-media.handler';
+export { SendCatalogHandler } from './send-catalog.handler';
 export { AskQuestionHandler } from './ask-question.handler';
 export { ConditionHandler } from './condition.handler';
 export { AiResponseHandler } from './ai-response.handler';

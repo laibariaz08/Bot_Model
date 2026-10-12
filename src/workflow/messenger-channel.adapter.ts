@@ -158,6 +158,20 @@ export class MessengerChannelAdapter implements ChannelAdapter {
     }
   }
 
+  // ─── Catalog (not supported on Messenger) ──────────────
+
+  async sendCatalogMessage(): Promise<SendResult> {
+    return { success: false, error: 'Catalog messages are not supported on Messenger' };
+  }
+
+  async sendProductListMessage(): Promise<SendResult> {
+    return { success: false, error: 'Product list messages are not supported on Messenger' };
+  }
+
+  async sendSingleProductMessage(): Promise<SendResult> {
+    return { success: false, error: 'Single product messages are not supported on Messenger' };
+  }
+
   private handleError(method: string, error: any): SendResult {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     this.logger.error(`${method} failed: ${msg}`);

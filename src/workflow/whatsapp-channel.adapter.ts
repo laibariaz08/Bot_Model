@@ -8,6 +8,7 @@ import type {
   ButtonPayload,
   ListSection,
   MediaPayload,
+  CatalogSection,
 } from './channel-adapter.interface';
 
 /**
@@ -264,6 +265,153 @@ export class WhatsAppChannelAdapter implements ChannelAdapter {
       return { success: true, messageId };
     } catch (error) {
       return this.handleError('sendMediaMessage', error);
+    }
+  }
+
+  // ─── Catalog Message (View Catalog) ────────────────────
+
+  async sendCatalogMessage(
+    to: string,
+    body: string,
+    credentials: BusinessCredentials,
+    footer?: string,
+    thumbnailProductId?: string,
+  ): Promise<SendResult> {
+    try {
+      const interactive: any = {
+        type: 'catalog_message',
+        body: { text: body },
+        action: { name: 'catalog_message' },
+      };
+
+      if (footer) {
+        interactive.footer = { text: footer.slice(0, 60) };
+      }
+
+      if (thumbnailProductId) {
+        interactive.action.parameters = {
+          thumbnail_product_retailer_id: thumbnailProductId,
+        };
+      }
+
+      const response = await axios.post(
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive,
+        },
+        { headers: { Authorization: `Bearer ${credentials.accessToken}` } },
+      );
+
+      const messageId = response.data?.messages?.[0]?.id;
+      this.logger.log(`Catalog message sent to ${to}: ${messageId}`);
+      await this.saveOutgoingMessage(body, 'interactive_catalog', { thumbnailProductId }, messageId);
+      return { success: true, messageId };
+    } catch (error) {
+      return this.handleError('sendCatalogMessage', error);
+    }
+  }
+
+  // ─── Product List Message ─────────────────────────────
+
+  async sendProductListMessage(
+    to: string,
+    body: string,
+    catalogId: string,
+    sections: CatalogSection[],
+    credentials: BusinessCredentials,
+    header?: string,
+    footer?: string,
+  ): Promise<SendResult> {
+    try {
+      const interactive: any = {
+        type: 'product_list',
+        body: { text: body },
+        action: {
+          catalog_id: catalogId,
+          sections: sections.map((s) => ({
+            title: s.title,
+            product_items: s.productItems.map((p) => ({
+              product_retailer_id: p.productRetailerId,
+            })),
+          })),
+        },
+      };
+
+      if (header) {
+        interactive.header = { type: 'text', text: header };
+      }
+
+      if (footer) {
+        interactive.footer = { text: footer.slice(0, 60) };
+      }
+
+      const response = await axios.post(
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive,
+        },
+        { headers: { Authorization: `Bearer ${credentials.accessToken}` } },
+      );
+
+      const messageId = response.data?.messages?.[0]?.id;
+      this.logger.log(`Product list message sent to ${to}: ${messageId}`);
+      await this.saveOutgoingMessage(body, 'interactive_product_list', { catalogId, sections }, messageId);
+      return { success: true, messageId };
+    } catch (error) {
+      return this.handleError('sendProductListMessage', error);
+    }
+  }
+
+  // ─── Single Product Message ───────────────────────────
+
+  async sendSingleProductMessage(
+    to: string,
+    body: string,
+    catalogId: string,
+    productRetailerId: string,
+    credentials: BusinessCredentials,
+    footer?: string,
+  ): Promise<SendResult> {
+    try {
+      const interactive: any = {
+        type: 'product',
+        body: { text: body },
+        action: {
+          catalog_id: catalogId,
+          product_retailer_id: productRetailerId,
+        },
+      };
+
+      if (footer) {
+        interactive.footer = { text: footer.slice(0, 60) };
+      }
+
+      const response = await axios.post(
+        `${this.baseURL}/${credentials.phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to,
+          type: 'interactive',
+          interactive,
+        },
+        { headers: { Authorization: `Bearer ${credentials.accessToken}` } },
+      );
+
+      const messageId = response.data?.messages?.[0]?.id;
+      this.logger.log(`Single product message sent to ${to}: ${messageId}`);
+      await this.saveOutgoingMessage(body, 'interactive_product', { catalogId, productRetailerId }, messageId);
+      return { success: true, messageId };
+    } catch (error) {
+      return this.handleError('sendSingleProductMessage', error);
     }
   }
 
