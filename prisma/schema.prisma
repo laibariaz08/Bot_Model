@@ -14,6 +14,7 @@ model Business {
 
   // WhatsApp Configuration
   whatsappPhoneNumberId String?
+  whatsappWabaId        String?
   whatsappBusinessPhone String? @unique
   whatsappAccessToken   String? // Store encrypted in production
   whatsappCatalogId     String?
@@ -35,6 +36,12 @@ model Business {
   agentInstructions String?
   websiteUrl        String?
 
+  // Admin management
+  isSuspended    Boolean  @default(false)
+  suspendedAt    DateTime?
+  suspendReason  String?
+  plan           String   @default("free")
+
   createdAt DateTime @default(now())
 
   users            User[]
@@ -43,6 +50,7 @@ model Business {
   workflows        Workflow[]
   workflowSessions WorkflowSession[]
   tickets          Ticket[]
+  auditLogs        AuditLog[]
 
   // Meta Ads Manager
   metaConnections    MetaConnection[]
@@ -61,10 +69,12 @@ model Business {
 }
 model User {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      Role     @default(MEMBER)
+  email       String   @unique
+  name        String
+  password    String
+  role        Role     @default(MEMBER)
+  isActive    Boolean  @default(true)
+  lastLoginAt DateTime?
 
   // Two-Factor Authentication
   twoFactorEnabled Boolean @default(false)
@@ -80,6 +90,7 @@ model User {
   contacts         Contact[]
   whatsappAccounts WhatsAppAccount[]
   createdWorkflows Workflow[]
+  auditLogs        AuditLog[]
   tickets          Ticket[]
   assignedTickets  Ticket[]        @relation("TicketAssignee")
   ticketMessages   TicketMessage[] @relation("TicketMessageSender")
@@ -169,6 +180,10 @@ model WhatsAppAccount {
 }
 
 enum Role {
+  SUPER_ADMIN
+  SUPPORT
+  BILLING_ADMIN
+  ANALYST
   OWNER
   MEMBER
 }
@@ -315,7 +330,7 @@ enum SessionStatus {
 model Ticket {
   id         String       @id @default(cuid())
   subject    String
-  status     TicketStatus @default(OPEN)
+  status     TicketStatus @default(NEW)
   priority   TicketPriority @default(MEDIUM)
   category   String?
 
@@ -356,8 +371,10 @@ model TicketMessage {
 }
 
 enum TicketStatus {
+  NEW
   OPEN
   IN_PROGRESS
+  WAITING_FOR_CLIENT
   RESOLVED
   CLOSED
 }
@@ -685,4 +702,30 @@ model AdOperation {
   @@index([businessId])
   @@index([connectionId, status])
   @@map("ad_operations")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  adminId      String
+  action       String
+  entityType   String
+  entityId     String?
+  details      Json?
+  reason       String?
+  beforeValues Json?
+  afterValues  Json?
+  businessId   String?
+  createdAt    DateTime @default(now())
+
+  admin    User      @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([adminId])
+  @@index([businessId])
+  @@index([entityType, createdAt])
+  @@map("audit_logs")
 }
