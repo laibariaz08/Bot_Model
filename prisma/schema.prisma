@@ -7,6 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  password    String
+  role        Role      @default(MEMBER)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  // Two-Factor Authentication
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+
+  // Account lockout
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contacts         Contact[]
+  whatsappAccounts WhatsAppAccount[]
+  createdWorkflows Workflow[]
+  auditLogs        AuditLog[]
+  tickets          Ticket[]
+  assignedTickets  Ticket[]        @relation("TicketAssignee")
+  ticketMessages   TicketMessage[] @relation("TicketMessageSender")
+
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
+
+  @@map("users")
+}
+
 model Business {
   id          String @id @default(cuid())
   name        String
@@ -16,9 +50,10 @@ model Business {
   whatsappPhoneNumberId String?
   whatsappWabaId        String?
   whatsappBusinessPhone String? @unique
-  whatsappAccessToken   String? // Store encrypted in production
+  whatsappAccessToken   String?
   whatsappCatalogId     String?
   whatsappIsActive      Boolean @default(false)
+  whatsappConnectionStatus IntegrationConnectionStatus @default(PENDING)
 
   // Instagram Configuration
   instagramPageId      String?  @unique
@@ -44,13 +79,16 @@ model Business {
 
   createdAt DateTime @default(now())
 
-  users            User[]
-  chats            Chat[]
-  knowledgeBase    KnowledgeBase[]
-  workflows        Workflow[]
-  workflowSessions WorkflowSession[]
-  tickets          Ticket[]
-  auditLogs        AuditLog[]
+  users             User[]
+  chats             Chat[]
+  knowledgeBase     KnowledgeBase[]
+  campaigns         Campaign[]
+  templates         Template[]
+  workflows         Workflow[]
+  workflowSessions  WorkflowSession[]
+  contactCategories ContactCategory[]
+  tickets           Ticket[]
+  auditLogs         AuditLog[]
 
   // Meta Ads Manager
   metaConnections    MetaConnection[]
@@ -67,72 +105,12 @@ model Business {
 
   @@map("businesses")
 }
-model User {
-  id        String   @id @default(cuid())
-  email       String   @unique
-  name        String
-  password    String
-  role        Role     @default(MEMBER)
-  isActive    Boolean  @default(true)
-  lastLoginAt DateTime?
 
-  // Two-Factor Authentication
-  twoFactorEnabled Boolean @default(false)
-  twoFactorSecret  String?
-
-  // Account lockout
-  failedLoginAttempts Int       @default(0)
-  lockedUntil         DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  contacts         Contact[]
-  whatsappAccounts WhatsAppAccount[]
-  createdWorkflows Workflow[]
-  auditLogs        AuditLog[]
-  tickets          Ticket[]
-  assignedTickets  Ticket[]        @relation("TicketAssignee")
-  ticketMessages   TicketMessage[] @relation("TicketMessageSender")
-
-  businessId String?
-  business   Business? @relation(fields: [businessId], references: [id])
-
-  @@map("users")
+enum IntegrationConnectionStatus {
+  PENDING
+  CONNECTED
+  DELETED
 }
-
-model Chat {
-  id             String   @id @default(cuid())
-  userPhone      String
-  businessId     String
-  createdAt      DateTime @default(now())
-  isResolved     Boolean  @default(false)
-  isRequesting   Boolean  @default(false)
-  channel        String   @default("whatsapp") // "whatsapp" | "instagram" | "messenger"
-  userIdentifier String?  // Instagram-scoped user ID (IGSID) for Instagram chats
-
-  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  messages         Message[]
-  workflowSessions WorkflowSession[]
-
-  @@map("chats")
-}
-
-model Message {
-  id                Int      @id @default(autoincrement())
-  chatId            String
-  sender            String   // "user" or "bot" or "assistant"
-  content           String
-  messageType       String   @default("text") // "text", "interactive_button", "interactive_list", "image", "document"
-  metadata          Json?    // Structured payload for interactive messages (button configs, list configs, etc.)
-  whatsappMessageId String?  // Track Meta message ID
-  createdAt         DateTime @default(now())
-
-  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-
-  @@map("messages")
-}
-
 
 model KnowledgeBase {
   id         String   @id @default(cuid())
@@ -146,19 +124,69 @@ model KnowledgeBase {
   @@map("knowledge_base")
 }
 
-model Contact {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String
-  email     String?
-  tags      String[] @default([])
-  status    String   @default("active")
-  messages  Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Chat {
+  id             String   @id @default(cuid())
+  userPhone      String
+  businessId     String
+  createdAt      DateTime @default(now())
+  isResolved     Boolean  @default(false)
+  isRequesting   Boolean  @default(false)
+  channel        String   @default("whatsapp")
+  userIdentifier String?
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages         Message[]
+  workflowSessions WorkflowSession[]
+
+  @@map("chats")
+}
+
+model Message {
+  id                Int      @id @default(autoincrement())
+  chatId            String
+  sender            String
+  content           String
+  messageType       String   @default("text")
+  metadata          Json?
+  whatsappMessageId String?
+  status            String   @default("sent")
+  campaignId        String?
+  campaign          Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model ContactCategory {
+  id         String   @id @default(cuid())
+  name       String
+  businessId String
+  createdAt  DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contacts Contact[]
+
+  @@unique([businessId, name])
+  @@map("contact_categories")
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String
+  email      String?
+  tags       String[] @default([])
+  status     String   @default("active")
+  messages   Int      @default(0)
+  categoryId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId   String?
+  user     User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category ContactCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@map("contacts")
 }
@@ -188,6 +216,44 @@ enum Role {
   MEMBER
 }
 
+model Campaign {
+  id          String    @id @default(cuid())
+  name        String
+  status      String    @default("draft")
+  templateId  String
+  template    Template  @relation(fields: [templateId], references: [id])
+  audience    String
+  sent        Int       @default(0)
+  delivered   Int       @default(0)
+  read        Int       @default(0)
+  clicked     Int       @default(0)
+  scheduledAt String?
+  variables   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@map("campaigns")
+}
+
+model Template {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  category   String
+  language   String     @default("en_US")
+  status     String     @default("APPROVED")
+  body       String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  Campaign   Campaign[]
+
+  @@map("templates")
+}
+
 // ============================================================
 // WORKFLOW SYSTEM
 // ============================================================
@@ -199,34 +265,26 @@ model Workflow {
   description String?
   status      WorkflowStatus      @default(DRAFT)
 
-  // Trigger configuration
   triggerType   WorkflowTriggerType
   triggerConfig Json?
 
-  // Variable definitions declared by this workflow
   variables Json?
 
-  // The workflow graph
   nodes Json
   edges Json
 
-  // Versioning
   version     Int       @default(1)
   publishedAt DateTime?
 
-  // Channel targeting
   channel String @default("whatsapp")
 
-  // Template system
   isTemplate       Boolean @default(false)
   templateCategory String?
 
-  // Audit
   createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   creator  User?             @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   sessions WorkflowSession[]
@@ -243,33 +301,23 @@ model WorkflowSession {
   workflowId      String
   workflowVersion Int
 
-  // Snapshot of the published workflow at session start
   workflowSnapshot Json
 
-  // Current execution state
   currentNodeId String?
   status        SessionStatus   @default(ACTIVE)
 
-  // Runtime variable store
   variables Json @default("{}")
-
-  // Execution context
   context Json @default("{}")
-
-  // Visited node trail
   history Json @default("[]")
 
-  // Input retry tracking
   retryCount Int @default(0)
   maxRetries Int @default(3)
 
-  // Activity tracking
   lastActivityAt DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   completedAt    DateTime?
 
-  // Relations
   chat     Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
   business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
   workflow Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
@@ -289,9 +337,9 @@ model WorkflowLog {
   nodeType  String
   input     Json?
   output    Json?
-  status    String   // "SUCCESS", "ERROR", "SKIPPED"
+  status    String
   error     String?
-  duration  Int?     // ms
+  duration  Int?
   createdAt DateTime @default(now())
 
   session WorkflowSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -390,6 +438,293 @@ enum TicketPriority {
 // META ADS MANAGER
 // ============================================================
 
+model MetaConnection {
+  id           String   @id @default(cuid())
+  businessId   String
+  metaAppId    String
+  metaUserId   String?
+  accessToken  String
+  tokenExpiry  DateTime?
+  scopes       String[]  @default([])
+  status       MetaConnectionStatus @default(ACTIVE)
+  lastSyncAt   DateTime?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business     Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adAccounts   MetaAdAccount[]
+  adOperations AdOperation[]
+
+  @@unique([businessId, metaAppId])
+  @@map("meta_connections")
+}
+
+model MetaAdAccount {
+  id               String   @id @default(cuid())
+  connectionId     String
+  businessId       String
+  metaAccountId    String
+  name             String
+  currency         String   @default("USD")
+  timezone         String   @default("America/Los_Angeles")
+  accountStatus    Int      @default(1)
+  metaBusinessId   String?
+  metaPageId       String?
+  metaInstagramId  String?
+  metaPixelId      String?
+  capabilities     String[] @default([])
+  lastSyncAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  connection       MetaConnection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaigns        AdCampaign[]
+  insightSnapshots AdInsightSnapshot[]
+  leadForms        LeadForm[]
+  audienceConfigs  AudienceConfig[]
+
+  @@unique([businessId, metaAccountId])
+  @@map("meta_ad_accounts")
+}
+
+model AdCampaign {
+  id              String   @id @default(cuid())
+  adAccountId     String
+  businessId      String
+  metaCampaignId  String?
+  name            String
+  objective       String
+  status          AdEntityStatus @default(DRAFT)
+  effectiveStatus String?
+  specialAdCategories String[] @default([])
+  dailyBudget     Float?
+  lifetimeBudget  Float?
+  startTime       DateTime?
+  endTime         DateTime?
+  bidStrategy     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  adAccount       MetaAdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adSets          AdSet[]
+
+  @@index([adAccountId])
+  @@index([businessId, status])
+  @@map("ad_campaigns")
+}
+
+model AdSet {
+  id              String   @id @default(cuid())
+  campaignId      String
+  businessId      String
+  metaAdSetId     String?
+  name            String
+  status          AdEntityStatus @default(DRAFT)
+  effectiveStatus String?
+  dailyBudget     Float?
+  lifetimeBudget  Float?
+  startTime       DateTime?
+  endTime         DateTime?
+  optimizationGoal String?
+  billingEvent    String?
+  bidAmount       Float?
+  targeting       Json?
+  placements      Json?
+  promotedObject  Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  campaign        AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  business        Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  ads             MetaAd[]
+
+  @@index([campaignId])
+  @@index([businessId])
+  @@map("ad_sets")
+}
+
+model MetaAd {
+  id              String   @id @default(cuid())
+  adSetId         String
+  businessId      String
+  metaAdId        String?
+  name            String
+  status          AdEntityStatus @default(DRAFT)
+  effectiveStatus String?
+  creativeId      String?
+  trackingSpecs   Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  adSet           AdSet       @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  business        Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  creative        AdCreative? @relation(fields: [creativeId], references: [id], onDelete: SetNull)
+
+  @@index([adSetId])
+  @@index([businessId])
+  @@map("meta_ads")
+}
+
+model AdCreative {
+  id             String   @id @default(cuid())
+  businessId     String
+  metaCreativeId String?
+  name           String
+  title          String?
+  body           String?
+  callToAction   String?
+  linkUrl        String?
+  imageUrl       String?
+  videoUrl       String?
+  thumbnailUrl   String?
+  pageId         String?
+  instagramActorId String?
+  urlTags        String?
+  objectType     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  ads            MetaAd[]
+
+  @@index([businessId])
+  @@map("ad_creatives")
+}
+
+model AdInsightSnapshot {
+  id             String   @id @default(cuid())
+  adAccountId    String
+  businessId     String
+  dateStart      DateTime
+  dateEnd        DateTime
+  level          String   @default("account")
+  entityId       String?
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  spend          Float    @default(0)
+  reach          Int      @default(0)
+  cpc            Float?
+  cpm            Float?
+  ctr            Float?
+  conversions    Int      @default(0)
+  costPerResult  Float?
+  results        Int      @default(0)
+  resultType     String?
+  currency       String   @default("USD")
+  rawData        Json?
+  syncedAt       DateTime @default(now())
+
+  adAccount      MetaAdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([adAccountId, dateStart, dateEnd])
+  @@index([businessId])
+  @@map("ad_insight_snapshots")
+}
+
+model LeadForm {
+  id             String   @id @default(cuid())
+  businessId     String
+  adAccountId    String?
+  metaFormId     String
+  name           String
+  status         String   @default("ACTIVE")
+  pageId         String?
+  questionsJson  Json?
+  totalLeads     Int      @default(0)
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  business       Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adAccount      MetaAdAccount?   @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
+  submissions    LeadSubmission[]
+
+  @@unique([businessId, metaFormId])
+  @@map("lead_forms")
+}
+
+model LeadSubmission {
+  id             String   @id @default(cuid())
+  formId         String
+  businessId     String
+  metaLeadId     String
+  fieldData      Json
+  adId           String?
+  adName         String?
+  campaignId     String?
+  campaignName   String?
+  platform       String?
+  status         LeadStatus @default(NEW)
+  assignedTo     String?
+  notes          String?
+  contactPhone   String?
+  contactEmail   String?
+  contactName    String?
+  consentData    Json?
+  submittedAt    DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  form           LeadForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, metaLeadId])
+  @@index([formId, submittedAt])
+  @@index([businessId, status])
+  @@map("lead_submissions")
+}
+
+model AudienceConfig {
+  id              String   @id @default(cuid())
+  businessId      String
+  adAccountId     String?
+  name            String
+  description     String?
+  type            String   @default("saved")
+  metaAudienceId  String?
+  targeting       Json
+  estimatedSize   Int?
+  lastUsedAt      DateTime?
+  performanceNote String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business        Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  adAccount       MetaAdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@map("audience_configs")
+}
+
+model AdOperation {
+  id             String   @id @default(cuid())
+  connectionId   String?
+  businessId     String
+  actorId        String?
+  operationType  String
+  entityType     String
+  entityId       String?
+  metaEntityId   String?
+  payload        Json?
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  result         Json?
+  error          String?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  connection     MetaConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([status])
+  @@map("ad_operations")
+}
+
 enum MetaConnectionStatus {
   ACTIVE
   EXPIRED
@@ -414,299 +749,17 @@ enum LeadStatus {
   LOST
 }
 
-model MetaConnection {
-  id           String               @id @default(cuid())
-  businessId   String
-  metaAppId    String
-  metaUserId   String
-  accessToken  String
-  tokenExpiry  DateTime?
-  scopes       String[]
-  status       MetaConnectionStatus @default(ACTIVE)
-  lastSyncAt   DateTime?
-  errorMessage String?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-
-  business     Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  adAccounts   MetaAdAccount[]
-  adOperations AdOperation[]
-
-  @@unique([businessId, metaAppId])
-  @@index([businessId, status])
-  @@map("meta_connections")
-}
-
-model MetaAdAccount {
-  id               String   @id @default(cuid())
-  connectionId     String
-  businessId       String
-  metaAccountId    String
-  name             String
-  currency         String   @default("USD")
-  timezone         String   @default("America/New_York")
-  accountStatus    Int      @default(1)
-  metaBusinessId   String?
-  metaPageId       String?
-  metaInstagramId  String?
-  metaPixelId      String?
-  capabilities     String[]
-  lastSyncAt       DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  connection       MetaConnection     @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  campaigns        AdCampaign[]
-  insightSnapshots AdInsightSnapshot[]
-  leadForms        LeadForm[]
-  audienceConfigs  AudienceConfig[]
-
-  @@unique([businessId, metaAccountId])
-  @@index([businessId])
-  @@map("meta_ad_accounts")
-}
-
-model AdCampaign {
-  id                  String         @id @default(cuid())
-  adAccountId         String
-  businessId          String
-  metaCampaignId      String?
-  name                String
-  objective           String?
-  status              AdEntityStatus @default(DRAFT)
-  effectiveStatus     String?
-  specialAdCategories String[]
-  dailyBudget         Float?
-  lifetimeBudget      Float?
-  startTime           DateTime?
-  endTime             DateTime?
-  bidStrategy         String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-
-  adAccount MetaAdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
-  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  adSets    AdSet[]
-
-  @@index([businessId])
-  @@index([adAccountId, status])
-  @@map("ad_campaigns")
-}
-
-model AdSet {
-  id                String         @id @default(cuid())
-  campaignId        String
-  businessId        String
-  metaAdSetId       String?
-  name              String
-  status            AdEntityStatus @default(DRAFT)
-  dailyBudget       Float?
-  lifetimeBudget    Float?
-  optimizationGoal  String?
-  billingEvent      String?
-  bidAmount         Float?
-  targeting         Json?
-  placements        Json?
-  promotedObject    Json?
-  startTime         DateTime?
-  endTime           DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-
-  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  ads      MetaAd[]
-
-  @@index([businessId])
-  @@index([campaignId, status])
-  @@map("ad_sets")
-}
-
-model MetaAd {
-  id            String         @id @default(cuid())
-  adSetId       String
-  businessId    String
-  metaAdId      String?
-  name          String
-  status        AdEntityStatus @default(DRAFT)
-  creativeId    String?
-  trackingSpecs Json?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  adSet    AdSet       @relation(fields: [adSetId], references: [id], onDelete: Cascade)
-  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  creative AdCreative? @relation(fields: [creativeId], references: [id], onDelete: SetNull)
-
-  @@index([businessId])
-  @@index([adSetId, status])
-  @@map("meta_ads")
-}
-
-model AdCreative {
-  id               String   @id @default(cuid())
-  businessId       String
-  metaCreativeId   String?
-  name             String
-  title            String?
-  body             String?
-  callToAction     String?
-  linkUrl          String?
-  imageUrl         String?
-  videoUrl         String?
-  thumbnailUrl     String?
-  pageId           String?
-  instagramActorId String?
-  urlTags          String?
-  objectType       String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  ads      MetaAd[]
-
-  @@index([businessId])
-  @@map("ad_creatives")
-}
-
-model AdInsightSnapshot {
-  id            String   @id @default(cuid())
-  adAccountId   String
-  businessId    String
-  dateStart     DateTime
-  dateEnd       DateTime
-  level         String
-  entityId      String
-  impressions   Int      @default(0)
-  clicks        Int      @default(0)
-  spend         Float    @default(0)
-  reach         Int      @default(0)
-  cpc           Float?
-  cpm           Float?
-  ctr           Float?
-  conversions   Int      @default(0)
-  costPerResult Float?
-  results       Int      @default(0)
-  resultType    String?
-  currency      String   @default("USD")
-  rawData       Json?
-  createdAt     DateTime @default(now())
-
-  adAccount MetaAdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
-  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  @@index([businessId])
-  @@index([adAccountId, dateStart, dateEnd])
-  @@index([entityId, level])
-  @@map("ad_insight_snapshots")
-}
-
-model LeadForm {
-  id            String     @id @default(cuid())
-  businessId    String
-  adAccountId   String
-  metaFormId    String?
-  name          String
-  status        String     @default("ACTIVE")
-  pageId        String?
-  questionsJson Json?
-  totalLeads    Int        @default(0)
-  lastSyncAt    DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-
-  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  adAccount   MetaAdAccount    @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
-  submissions LeadSubmission[]
-
-  @@unique([businessId, metaFormId])
-  @@index([businessId])
-  @@map("lead_forms")
-}
-
-model LeadSubmission {
-  id           String     @id @default(cuid())
-  formId       String
-  businessId   String
-  metaLeadId   String?
-  fieldData    Json?
-  adId         String?
-  adName       String?
-  campaignId   String?
-  campaignName String?
-  platform     String?
-  status       LeadStatus @default(NEW)
-  assignedTo   String?
-  notes        String?
-  contactPhone String?
-  contactEmail String?
-  contactName  String?
-  consentData  Json?
-  submittedAt  DateTime   @default(now())
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  form     LeadForm @relation(fields: [formId], references: [id], onDelete: Cascade)
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  @@unique([businessId, metaLeadId])
-  @@index([businessId, status])
-  @@index([formId])
-  @@map("lead_submissions")
-}
-
-model AudienceConfig {
-  id              String   @id @default(cuid())
-  businessId      String
-  adAccountId     String
-  name            String
-  description     String?
-  type            String
-  metaAudienceId  String?
-  targeting       Json?
-  estimatedSize   Int?
-  lastUsedAt      DateTime?
-  performanceNote String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  adAccount MetaAdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
-
-  @@index([businessId])
-  @@map("audience_configs")
-}
-
-model AdOperation {
-  id            String   @id @default(cuid())
-  connectionId  String
-  businessId    String
-  actorId       String?
-  operationType String
-  entityType    String
-  entityId      String?
-  metaEntityId  String?
-  payload       Json?
-  status        String   @default("PENDING")
-  attempts      Int      @default(0)
-  result        Json?
-  error         String?
-  completedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  connection MetaConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  business   Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  @@index([businessId])
-  @@index([connectionId, status])
-  @@map("ad_operations")
-}
-
 // ============================================================
-// AUDIT LOG
+// ADMIN SYSTEM
 // ============================================================
+
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
 
 model AuditLog {
   id           String   @id @default(cuid())
