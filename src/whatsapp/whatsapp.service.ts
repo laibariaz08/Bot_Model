@@ -9,7 +9,7 @@ export interface WhatsAppCredentials {
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
-  private readonly baseURL = 'https://graph.facebook.com/v18.0';
+  private readonly baseURL = 'https://graph.facebook.com/v21.0';
 
   async sendMessage(recipientPhone: string, message: string, credentials: WhatsAppCredentials) {
     try {

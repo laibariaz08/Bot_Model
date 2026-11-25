@@ -22,7 +22,7 @@ import type {
 @Injectable()
 export class WhatsAppChannelAdapter implements ChannelAdapter {
   private readonly logger = new Logger(WhatsAppChannelAdapter.name);
-  private readonly baseURL = 'https://graph.facebook.com/v18.0';
+  private readonly baseURL = 'https://graph.facebook.com/v21.0';
 
   constructor(private readonly prisma: PrismaService) {}
 

@@ -9,7 +9,7 @@ export interface MessengerCredentials {
 @Injectable()
 export class MessengerService {
   private readonly logger = new Logger(MessengerService.name);
-  private readonly baseURL = 'https://graph.facebook.com/v18.0';
+  private readonly baseURL = 'https://graph.facebook.com/v21.0';
 
   processIncomingMessage(webhookData: any) {
     try {

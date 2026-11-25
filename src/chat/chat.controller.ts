@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Req, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { AiService } from '../ai/ai.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -7,6 +7,8 @@ import { MessengerService } from '../messenger/messenger.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/normalize-phone';
+import { Request } from 'express';
+import * as crypto from 'crypto';
 
 @Controller('chat')
 export class ChatController {
@@ -22,6 +24,26 @@ export class ChatController {
     private workflowEngine: WorkflowEngineService,
     private prisma: PrismaService,
   ) {}
+
+  private verifySignature(req: Request) {
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) return;
+
+    const signature = req.headers['x-hub-signature-256'] as string;
+    if (!signature) {
+      this.logger.warn('Webhook rejected: missing X-Hub-Signature-256 header');
+      throw new ForbiddenException('Missing signature');
+    }
+
+    const rawBody = (req as any).rawBody;
+    if (rawBody) {
+      const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+      if (signature !== expected) {
+        this.logger.warn('Webhook rejected: invalid signature');
+        throw new ForbiddenException('Invalid signature');
+      }
+    }
+  }
 
   @Get('webhook')
   verifyWebhook(
@@ -55,9 +77,9 @@ export class ChatController {
   }
 
   @Post('instagram-webhook')
-  async handleInstagramWebhook(@Body() body: any) {
+  async handleInstagramWebhook(@Body() body: any, @Req() req: Request) {
+    this.verifySignature(req);
     this.logger.log('Instagram webhook received');
-    this.logger.log(`Instagram payload: ${JSON.stringify(body).substring(0, 500)}`);
 
     let trackedMessageId: string | undefined;
     try {
@@ -176,9 +198,9 @@ export class ChatController {
   }
 
   @Post('messenger-webhook')
-  async handleMessengerWebhook(@Body() body: any) {
+  async handleMessengerWebhook(@Body() body: any, @Req() req: Request) {
+    this.verifySignature(req);
     this.logger.log('Messenger webhook received');
-    this.logger.log(`Messenger payload: ${JSON.stringify(body).substring(0, 500)}`);
 
     let trackedMessageId: string | undefined;
     try {
@@ -275,7 +297,8 @@ export class ChatController {
 
   // ─── WhatsApp Webhook ──────────────────────────────────
   @Post('webhook')
-  async handleWebhook(@Body() body: any) {
+  async handleWebhook(@Body() body: any, @Req() req: Request) {
+    this.verifySignature(req);
     this.logger.log('Webhook received');
 
     let trackedMessageId: string | undefined;

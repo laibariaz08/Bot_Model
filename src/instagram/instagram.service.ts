@@ -9,7 +9,7 @@ export interface InstagramCredentials {
 @Injectable()
 export class InstagramService {
   private readonly logger = new Logger(InstagramService.name);
-  private readonly baseURL = 'https://graph.facebook.com/v18.0';
+  private readonly baseURL = 'https://graph.facebook.com/v21.0';
 
   /**
    * Parse an incoming Instagram webhook payload.
