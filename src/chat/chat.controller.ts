@@ -7,7 +7,7 @@ import { MessengerService } from '../messenger/messenger.service';
 import { WorkflowEngineService } from '../workflow/workflow-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePhone } from '../common/normalize-phone';
-import { Request } from 'express';
+import * as express from 'express';
 import * as crypto from 'crypto';
 
 @Controller('chat')
@@ -25,7 +25,7 @@ export class ChatController {
     private prisma: PrismaService,
   ) {}
 
-  private verifySignature(req: Request) {
+  private verifySignature(req: express.Request) {
     const appSecret = process.env.META_APP_SECRET;
     if (!appSecret) return;
 
@@ -77,7 +77,7 @@ export class ChatController {
   }
 
   @Post('instagram-webhook')
-  async handleInstagramWebhook(@Body() body: any, @Req() req: Request) {
+  async handleInstagramWebhook(@Body() body: any, @Req() req: express.Request) {
     this.verifySignature(req);
     this.logger.log('Instagram webhook received');
 
@@ -198,7 +198,7 @@ export class ChatController {
   }
 
   @Post('messenger-webhook')
-  async handleMessengerWebhook(@Body() body: any, @Req() req: Request) {
+  async handleMessengerWebhook(@Body() body: any, @Req() req: express.Request) {
     this.verifySignature(req);
     this.logger.log('Messenger webhook received');
 
@@ -297,7 +297,7 @@ export class ChatController {
 
   // ─── WhatsApp Webhook ──────────────────────────────────
   @Post('webhook')
-  async handleWebhook(@Body() body: any, @Req() req: Request) {
+  async handleWebhook(@Body() body: any, @Req() req: express.Request) {
     this.verifySignature(req);
     this.logger.log('Webhook received');
 
